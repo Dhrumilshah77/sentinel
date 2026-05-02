@@ -1,0 +1,31 @@
+# --- secrets ---
+.env
+.env.local
+*.key
+*.pem
+
+# --- venv / build ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- data (pull via bootstrap, never commit) ---
+data/
+repos/
+
+# --- editor / OS ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+nohup.out
+
+# --- runtime logs ---
+*.log
+/tmp/

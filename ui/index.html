@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>SENTINEL — Multi-Agency Cyber Threat Fusion</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+<script src="https://unpkg.com/globe.gl@2.32.4/dist/globe.gl.min.js"></script>
+<style>
+  :root {
+    --bg:#04060a; --bg2:#080c12; --panel:#0c1218; --line:#1a2129;
+    --fg:#dbe2eb; --mute:#67737f; --accent:#5fb4ff;
+    --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --crit:#ff2d55;
+    --gold:#d4af37; --magenta:#d479ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--fg);
+    font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size:12px; overflow:hidden; }
+
+  .classification { background:#0a3d20; color:#7aff95; text-align:center; padding:3px 0;
+    font-weight:700; letter-spacing:4px; font-size:10.5px; border-bottom:1px solid #14572d; }
+
+  header { display:flex; align-items:center; justify-content:space-between;
+    padding:8px 14px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#0a0e14,#06090d); }
+  .brand { display:flex; align-items:center; gap:12px; }
+  .mark { width:30px; height:30px; border:1.5px solid var(--gold); border-radius:50%;
+    display:flex; align-items:center; justify-content:center; color:var(--gold); font-weight:700; }
+  .brand h1 { margin:0; font-size:13px; letter-spacing:5px; }
+  .brand h1 small { display:block; font-size:9.5px; color:var(--mute); letter-spacing:3px; margin-top:2px; }
+  .meta { color:var(--mute); font-size:10.5px; letter-spacing:1px; text-align:right; }
+  .meta strong { color:var(--fg); }
+  .pulse { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--ok);
+    margin-right:6px; animation:pulse 1.4s infinite; }
+  @keyframes pulse { 0% {opacity:1; transform:scale(1);} 50% {opacity:.4; transform:scale(1.5);} 100% {opacity:1; transform:scale(1);} }
+
+  /* command bar */
+  .commandbar { display:flex; gap:8px; align-items:center; padding:8px 14px;
+    border-bottom:1px solid var(--line); background:var(--bg2); }
+  .commandbar input { flex:1; background:#0a0e13; color:var(--fg);
+    border:1px solid var(--line); border-radius:4px; padding:8px 12px; font:inherit; font-size:13px; outline:none; }
+  .commandbar input:focus { border-color:var(--accent); }
+  .commandbar button { background:var(--accent); color:#001124; border:none;
+    padding:8px 16px; border-radius:4px; cursor:pointer; font:inherit; font-weight:700; letter-spacing:1px; font-size:11px; }
+  .commandbar button:hover { background:#7cc4ff; }
+  .commandbar button.gold  { background:var(--gold);    color:#1a1300; }
+  .commandbar button.crit  { background:var(--crit);    color:#fff; }
+  .commandbar button.green { background:#1f8a3e;        color:#dff7e6; }
+  .commandbar button.purple{ background:var(--magenta); color:#1f0a26; }
+
+  /* big buttons */
+  .actions { display:grid; grid-template-columns:repeat(8, 1fr); gap:1px; background:var(--line);
+    border-bottom:1px solid var(--line); }
+  .actions button { background:#0a0f15; color:var(--fg); border:none; cursor:pointer;
+    padding:11px 6px; font:inherit; font-size:10px; letter-spacing:1.5px; font-weight:700;
+    text-transform:uppercase; transition:background 0.1s; }
+  .actions button:hover { background:#15202c; color:var(--accent); }
+  .actions button .num { display:block; font-size:18px; color:var(--accent);
+    margin-bottom:3px; letter-spacing:0; font-weight:400; }
+  .actions button.crit .num { color:var(--crit); }
+  .actions button.warn .num { color:var(--warn); }
+  .actions button.gold .num { color:var(--gold); }
+  .actions button.purple .num { color:var(--magenta); }
+
+  /* main grid */
+  .main { display:grid; grid-template-columns: 1fr 480px; gap:0;
+    height: calc(100vh - 33px - 49px - 47px - 60px - 54px); }
+  /* classification + header + commandbar + actions + agencies */
+
+  .globe-wrap { position:relative; background:#020306; overflow:hidden; }
+  #globeViz { width:100%; height:100%; }
+  .globe-overlay { position:absolute; left:14px; top:14px; z-index:5;
+    background:rgba(8,12,17,0.92); border:1px solid var(--line); padding:9px 12px; border-radius:4px;
+    font-size:10.5px; letter-spacing:1px; color:var(--mute); pointer-events:none; max-width:340px; }
+  .globe-overlay strong { color:var(--accent); letter-spacing:0; font-size:13px; }
+  .globe-overlay .legend { margin-top:5px; }
+  .globe-overlay .legend i { display:inline-block; width:8px; height:8px; border-radius:50%;
+    margin-right:4px; vertical-align:middle; }
+  .globe-overlay .live { color:var(--ok); margin-top:4px; }
+
+  /* dossier */
+  .dossier { display:flex; flex-direction:column; min-width:0; overflow:hidden;
+    border-left:1px solid var(--line); background:var(--bg2); }
+  .dossier-tabs { display:flex; border-bottom:1px solid var(--line); background:#070a0e;
+    overflow-x:auto; }
+  .dossier-tabs button { flex-shrink:0; background:transparent; color:var(--mute); border:none;
+    padding:9px 12px; cursor:pointer; font:inherit; font-size:10px;
+    letter-spacing:2px; text-transform:uppercase; border-bottom:2px solid transparent; }
+  .dossier-tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .dossier-body { flex:1; overflow:auto; padding:12px 14px; }
+  .dossier-body h3 { font-size:10.5px; color:var(--mute); margin:14px 0 6px;
+    text-transform:uppercase; letter-spacing:2px; font-weight:600;
+    border-bottom:1px dashed var(--line); padding-bottom:4px; }
+  .dossier-body h3:first-child { margin-top:0; }
+
+  .card { background:#0a0f15; border:1px solid var(--line); border-radius:4px;
+    padding:9px 11px; margin-bottom:7px; cursor:pointer; transition: border-color .1s; }
+  .card:hover { border-color:var(--accent); }
+  .card .title { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .card .title strong { font-size:12.5px; }
+  .country { font-size:10px; color:var(--gold); letter-spacing:1px; text-transform:uppercase; }
+  .desc { color:var(--mute); margin-top:4px; line-height:1.4; font-size:11px; }
+  .ttp { display:inline-block; padding:1px 6px; border:1px solid #1f3145; color:var(--accent);
+    font-size:10px; border-radius:3px; margin:2px 3px 0 0; }
+  .badge { display:inline-block; padding:1px 6px; border:1px solid var(--line); border-radius:3px;
+    font-size:10px; color:var(--mute); margin-right:4px; }
+  .small { font-size:10.5px; color:var(--mute); }
+
+  .cve { display:flex; gap:10px; padding:6px 0; border-bottom:1px dotted var(--line); cursor:pointer; }
+  .cve .id { color:var(--accent); width:130px; flex-shrink:0; }
+  .cve .name { flex:1; }
+  .ransom { color:var(--crit); font-size:10px; letter-spacing:1px; }
+
+  .briefing { white-space:pre-wrap; line-height:1.6; font-size:12.5px; background:#080c11;
+    border:1px solid var(--line); border-radius:4px; padding:12px; }
+  .briefing h4 { color:var(--gold); margin:8px 0 4px; font-size:11px; letter-spacing:3px; }
+
+  /* risk pills */
+  .risk { display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px;
+    letter-spacing:1px; font-weight:700; }
+  .risk-CRITICAL { background:#3a0a14; color:#ff5577; border:1px solid #5a1525; }
+  .risk-HIGH     { background:#3a1a08; color:#ff9933; border:1px solid #5a2510; }
+  .risk-MEDIUM   { background:#1a2c0c; color:#aacc44; border:1px solid #2a4012; }
+  .risk-LOW      { background:#0c1a14; color:#44cc88; border:1px solid #15301f; }
+
+  /* agencies row */
+  .timeline { height:54px; border-top:1px solid var(--line); background:#070a0e;
+    padding:5px 14px; overflow:hidden; }
+  .timeline h3 { margin:0 0 3px; font-size:9px; color:var(--mute);
+    letter-spacing:3px; text-transform:uppercase; }
+  .agency-row { display:flex; gap:10px; overflow-x:auto; padding:1px 0; }
+  .agency-pill { flex-shrink:0; padding:3px 9px; background:#0a0f15;
+    border:1px solid var(--line); border-radius:3px; font-size:10px; }
+  .agency-pill strong { margin-right:5px; }
+  .ag-cisa  strong { color:#ff8a3c; }
+  .ag-nsa   strong { color:#7aff95; }
+  .ag-fbi   strong { color:#ffd166; }
+  .ag-dod   strong { color:#5fb4ff; }
+  .ag-mitre strong { color:#d479ff; }
+  .ag-nist  strong { color:#a3e635; }
+  .ag-first strong { color:#f59e0b; }
+  .ag-tres  strong { color:#5fb4ff; }
+  .ag-state strong { color:#ffaaaa; }
+  .ag-doj   strong { color:#88ccff; }
+  .ag-abuse strong { color:#ff8a3c; }
+
+  /* chatbot drawer */
+  #chatDrawer { position:fixed; top:0; right:-460px; width:460px; height:100vh;
+    background:#06090d; border-left:1px solid var(--line); z-index:1000;
+    display:flex; flex-direction:column; transition: right 0.22s ease; box-shadow:-12px 0 32px rgba(0,0,0,0.6); }
+  #chatDrawer.open { right:0; }
+  #chatDrawer header { background:#0a0e14; border-bottom:1px solid var(--line); padding:11px 14px;
+    display:flex; justify-content:space-between; align-items:center; }
+  #chatDrawer header h3 { margin:0; font-size:12px; letter-spacing:3px; color:var(--accent); }
+  #chatDrawer header button { background:transparent; color:var(--mute); border:none; cursor:pointer; font-size:18px; }
+  #chatBody { flex:1; overflow:auto; padding:12px 14px; }
+  .msg { margin:8px 0; line-height:1.55; }
+  .msg.user { color:var(--accent); }
+  .msg.user::before { content:"▸ "; color:var(--gold); }
+  .msg.bot  { color:var(--fg); padding:10px 12px; background:#0a0f15;
+    border-left:2px solid var(--accent); border-radius:3px; white-space:pre-wrap; }
+  #chatInput { display:flex; gap:6px; padding:10px 12px; border-top:1px solid var(--line); background:#0a0e14; }
+  #chatInput input { flex:1; background:#06090d; color:var(--fg);
+    border:1px solid var(--line); padding:8px 10px; border-radius:3px; font:inherit; font-size:12px; outline:none; }
+  #chatInput button { background:var(--accent); color:#001124; border:none;
+    padding:8px 14px; border-radius:3px; cursor:pointer; font-weight:700; }
+
+  /* live-scan card */
+  .scan-source { background:#0a0f15; border:1px solid var(--line); border-radius:4px;
+    padding:8px 11px; margin-bottom:6px; }
+  .scan-source h4 { margin:0; font-size:11px; color:var(--accent); letter-spacing:2px; }
+  .scan-source pre { margin:6px 0 0; font-size:10.5px; color:var(--mute); white-space:pre-wrap;
+    max-height:120px; overflow:auto; line-height:1.4; }
+
+  ::-webkit-scrollbar { width:7px; height:7px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#1a2129; border-radius:3px; }
+
+  .hint { color:var(--mute); font-style:italic; }
+  .gold { color:var(--gold); }
+</style>
+</head>
+<body>
+
+<div class="classification">UNCLASSIFIED // FOR OFFICIAL USE ONLY // HACKATHON DEMO · DO NOT DISTRIBUTE</div>
+
+<header>
+  <div class="brand">
+    <div class="mark">S</div>
+    <h1>SENTINEL <small>MULTI-AGENCY CYBER THREAT FUSION · NATSEC HACKATHON</small></h1>
+  </div>
+  <div class="meta">
+    <div><span class="pulse"></span> <strong>LIVE</strong> · 11 AGENCY FEEDS · <span id="kev-rel">CISA KEV…</span></div>
+    <div id="now"></div>
+  </div>
+</header>
+
+<div class="commandbar">
+  <input id="q" placeholder="query: APT, country, CVE-XXXX-XXXX, IP, domain, file hash, sanctioned actor (e.g. 'volt typhoon', '8.8.8.8', 'CVE-2024-...', 'lazarus')" />
+  <button onclick="runSearch()">QUERY ALL AGENCIES</button>
+  <button class="green" onclick="liveScan()">⚡ LIVE SCAN</button>
+  <button class="gold" onclick="generateBriefing()">⚑ BRIEFING</button>
+  <button class="purple" onclick="openChat()">◆ ANALYST CHAT</button>
+</div>
+
+<div class="actions">
+  <button onclick="loadView('threats')"><span class="num" id="b-kev">…</span>EXPLOITED CVES</button>
+  <button class="crit" onclick="loadView('ransomware')"><span class="num" id="b-rans">…</span>RANSOMWARE</button>
+  <button class="warn" onclick="loadView('groups')"><span class="num" id="b-apt">…</span>APT GROUPS</button>
+  <button onclick="loadView('iocs')"><span class="num" id="b-ioc">…</span>LIVE IOCS</button>
+  <button class="purple" onclick="loadView('exposure')"><span class="num" id="b-exp">…</span>OUR EXPOSURE</button>
+  <button class="gold" onclick="loadView('wanted')"><span class="num" id="b-want">…</span>WANTED + BOUNTIES</button>
+  <button onclick="loadView('sanctions')"><span class="num" id="b-sdn">…</span>OFAC SANCTIONS</button>
+  <button class="warn" onclick="loadView('money')"><span class="num">FLOW</span>MONEY / FUNDING</button>
+</div>
+
+<div class="main">
+  <div class="globe-wrap">
+    <div id="globeViz"></div>
+    <div class="globe-overlay">
+      <strong>GLOBAL ATTACK FLOW</strong>
+      <div>Adversary attribution arcs · MITRE ATT&CK + DoJ + OFAC<br>Click marker → APT dossier · Click arc → flow detail</div>
+      <div class="legend">
+        <span><i style="background:#ef4444"></i>nation-state</span>&nbsp;
+        <span><i style="background:#f59e0b"></i>criminal</span>&nbsp;
+        <span><i style="background:#5fb4ff"></i>multi-source</span>
+      </div>
+      <div class="live"><span class="pulse"></span> live IOC stream · <span id="ioc-count">…</span> indicators</div>
+    </div>
+  </div>
+
+  <div class="dossier">
+    <div class="dossier-tabs">
+      <button class="active" data-tab="briefing" onclick="switchTab('briefing')">BRIEFING</button>
+      <button data-tab="dossier" onclick="switchTab('dossier')">DOSSIER</button>
+      <button data-tab="results" onclick="switchTab('results')">RESULTS</button>
+      <button data-tab="scan" onclick="switchTab('scan')">LIVE SCAN</button>
+    </div>
+    <div class="dossier-body" id="body">
+      <div class="hint">Use the command bar above. <strong>QUERY ALL AGENCIES</strong> searches CISA / MITRE / OFAC / Wanted in one shot. <strong>LIVE SCAN</strong> hits external APIs (GreyNoise, NVD, abuse.ch, Shodan, AbuseIPDB, VirusTotal) in real time. <strong>BRIEFING</strong> generates an AI-synthesized commander's briefing. <strong>ANALYST CHAT</strong> opens a grounded chatbot.</div>
+    </div>
+  </div>
+</div>
+
+<div class="timeline">
+  <h3>OPEN-SOURCE INGEST · 11 AGENCY / OSINT FEEDS</h3>
+  <div class="agency-row" id="agencies"></div>
+</div>
+
+<!-- chatbot drawer -->
+<div id="chatDrawer">
+  <header>
+    <h3><span class="pulse"></span> SENTINEL ANALYST</h3>
+    <button onclick="closeChat()">✕</button>
+  </header>
+  <div id="chatBody"></div>
+  <div id="chatInput">
+    <input id="chatQ" placeholder="ask: 'who is APT41?', 'what's our top exposure?', 'summarize threats this week'" />
+    <button onclick="sendChat()">SEND</button>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let G = null, ARCS = [], MARKERS = [], TARGETS = [];
+let CURRENT_TAB='briefing', CURRENT_DATA=null, CHAT_HIST=[];
+
+function fmtNum(n){ return (n||0).toLocaleString(); }
+function nowTick(){ $("now").textContent = new Date().toISOString().replace('T',' ').slice(0,19) + 'Z'; }
+setInterval(nowTick, 1000); nowTick();
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+
+const COUNTRY_COLOR = { "China":"#ef4444","Russia":"#ef4444","North Korea":"#ef4444","Iran":"#ef4444","Vietnam":"#f59e0b","Brazil/UK":"#f59e0b","USA/UK":"#5fb4ff" };
+
+function switchTab(t) {
+  CURRENT_TAB = t;
+  document.querySelectorAll('.dossier-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  if (CURRENT_DATA) renderTab();
+}
+
+async function bootstrap() {
+  const [s, exp, sanc] = await Promise.all([
+    fetch('/intel/summary').then(r=>r.json()),
+    fetch('/exposure').then(r=>r.json()),
+    fetch('/sanctions/summary').then(r=>r.json()),
+  ]);
+  $("b-kev").textContent  = fmtNum(s.kev_count);
+  $("b-rans").textContent = fmtNum(s.kev_ransomware);
+  $("b-apt").textContent  = fmtNum(s.apt_groups_total);
+  $("b-ioc").textContent  = fmtNum(s.live_iocs);
+  $("b-exp").textContent  = fmtNum(exp.totals.vendors_with_active_exploits) + '/' + (exp.vendors||[]).length;
+  $("b-want").textContent = '$' + ((sanc.wanted_bounty_usd||0)/1_000_000).toFixed(0) + 'M';
+  $("b-sdn").textContent  = fmtNum(sanc.ofac_total);
+  $("kev-rel").textContent = "CISA KEV " + (s.kev_released||"").slice(0,10);
+  $("ioc-count").textContent = fmtNum(s.live_iocs);
+
+  const ag = $("agencies");
+  const pills = [
+    ["ag-cisa","CISA",  `${fmtNum(s.kev_count)} exploited CVEs · DHS catalog ${(s.kev_released||"").slice(0,10)}`],
+    ["ag-nist","NIST NVD", `live API · vulnerability master record`],
+    ["ag-mitre","MITRE",  `${s.apt_groups_total} APTs · ${s.techniques} techniques · ${s.malware_families} malware`],
+    ["ag-first","FIRST EPSS", `live exploit prediction scores`],
+    ["ag-tres","Treasury OFAC", `${fmtNum(sanc.ofac_total)} sanctioned entities · SDN list`],
+    ["ag-state","State Dept RFJ", `Rewards for Justice · $${(sanc.wanted_bounty_usd/1_000_000).toFixed(0)}M outstanding`],
+    ["ag-fbi","FBI Cyber", `Most Wanted · cyber bounties`],
+    ["ag-doj","DoJ", `nation-state indictments · public`],
+    ["ag-nsa","NSA",  `cybersecurity advisories · DoD/IC`],
+    ["ag-dod","DC3",  `DoD Cyber Crime Center`],
+    ["ag-abuse","abuse.ch", `${fmtNum(s.live_iocs)} live IOCs · last 7d`],
+  ];
+  ag.innerHTML = pills.map(([cls,name,desc]) =>
+    `<div class="agency-pill ${cls}"><strong>${name}</strong><span class="small">${desc}</span></div>`
+  ).join("");
+
+  initGlobe();
+  await generateBriefing();
+}
+
+async function initGlobe() {
+  const el = document.getElementById('globeViz');
+  G = Globe()
+    .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+    .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+    .backgroundColor('#020306')
+    .showAtmosphere(true)
+    .atmosphereColor('#5fb4ff')
+    .atmosphereAltitude(0.18)
+    (el);
+
+  G.controls().autoRotate = true;
+  G.controls().autoRotateSpeed = 0.4;
+  G.pointOfView({ lat: 30, lng: 10, altitude: 2.0 });
+
+  // Load arcs + markers
+  const j = await fetch('/globe/arcs').then(r=>r.json());
+  ARCS = j.arcs; TARGETS = j.targets; MARKERS = j.origins;
+
+  G.arcsData(ARCS)
+    .arcColor(a => [a.color, '#5fb4ff'])
+    .arcStartLat('from_lat').arcStartLng('from_lng')
+    .arcEndLat('to_lat').arcEndLng('to_lng')
+    .arcDashLength(0.5).arcDashGap(0.25).arcDashAnimateTime(2200)
+    .arcStroke(0.4)
+    .arcLabel(a => `<b style="color:#ef4444">${a.country}</b> → <b style="color:#5fb4ff">${a.target}</b><br>${a.group} ${a.actor ? '— '+a.actor : ''}`);
+
+  // origin markers (red rings)
+  G.htmlElementsData(MARKERS)
+   .htmlLat('lat').htmlLng('lng')
+   .htmlElement(d => {
+     const div = document.createElement('div');
+     div.innerHTML = `<div style="position:relative;width:14px;height:14px;cursor:pointer">
+       <div style="position:absolute;inset:0;border:2px solid #ef4444;border-radius:50%;animation:pulse 1.5s infinite"></div>
+       <div style="position:absolute;left:18px;top:-4px;color:#ef4444;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:1px;white-space:nowrap;text-shadow:0 0 8px rgba(0,0,0,0.9)">${d.country.toUpperCase()} · ${d.groups}</div>
+     </div>`;
+     div.style.cursor = 'pointer';
+     div.onclick = () => loadCountryGroups(d.country);
+     return div;
+   });
+
+  // US target dots (blue)
+  G.pointsData(TARGETS)
+   .pointLat('lat').pointLng('lng')
+   .pointColor(()=>'#5fb4ff')
+   .pointRadius(0.18)
+   .pointAltitude(0.005)
+   .pointLabel(p => `<b>${p.name}</b>`);
+
+  // resize
+  function size() {
+    const rect = el.getBoundingClientRect();
+    G.width(rect.width).height(rect.height);
+  }
+  size();
+  window.addEventListener('resize', size);
+}
+
+async function loadCountryGroups(country) {
+  const j = await fetch('/intel/map').then(r=>r.json());
+  const m = j.markers.find(x => x.country === country);
+  if (!m) return;
+  CURRENT_DATA = { _kind:'country', country, groups: m.groups };
+  switchTab('dossier'); renderTab();
+}
+
+async function loadView(kind) {
+  const [s, exp, sanc] = await Promise.all([
+    fetch('/intel/summary').then(r=>r.json()),
+    fetch('/exposure').then(r=>r.json()),
+    fetch('/sanctions/summary').then(r=>r.json()),
+  ]);
+  CURRENT_DATA = { _kind: kind, summary: s, exposure: exp, sanctions: sanc };
+  switchTab('dossier'); renderTab();
+}
+
+async function runSearch() {
+  const q = $("q").value.trim();
+  if (!q) return;
+  const [intel, sanc] = await Promise.all([
+    fetch('/intel/search?q='+encodeURIComponent(q)).then(r=>r.json()),
+    fetch('/sanctions/search?q='+encodeURIComponent(q)).then(r=>r.json()),
+  ]);
+  CURRENT_DATA = { _kind:'search', _query:q, ...intel, sanc };
+  switchTab('results'); renderTab();
+}
+
+async function liveScan() {
+  const q = $("q").value.trim();
+  if (!q) { alert("type an IP, domain, CVE, or file hash to scan"); return; }
+  switchTab('scan');
+  $("body").innerHTML = `<div class="hint"><span class="pulse"></span> Scanning <strong>${escapeHtml(q)}</strong> across live OSINT APIs (GreyNoise · abuse.ch · NVD · EPSS · Shodan · AbuseIPDB · VirusTotal · OTX · IPinfo · Pulsedive)…</div>`;
+  const j = await fetch('/live/scan?q='+encodeURIComponent(q)).then(r=>r.json());
+  CURRENT_DATA = { _kind:'scan', ...j };
+  renderTab();
+}
+
+async function generateBriefing() {
+  switchTab('briefing');
+  $("body").innerHTML = `<div class="hint"><span class="pulse"></span> Querying CISA · MITRE · NVD · abuse.ch · OFAC · State Dept · synthesizing…</div>`;
+  const q = $("q").value.trim();
+  const j = await fetch('/intel/briefing', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({q})
+  }).then(r=>r.json());
+  CURRENT_DATA = { _kind:'briefing', ...j };
+  renderTab();
+}
+
+window.openGroup = async function(gid) {
+  const r = await fetch(`/intel/group/${encodeURIComponent(gid)}`);
+  if (!r.ok) return;
+  CURRENT_DATA = await r.json();
+  CURRENT_DATA._kind = 'group';
+  switchTab('dossier'); renderTab();
+}
+
+function renderTab() {
+  const d = CURRENT_DATA;
+  if (!d) return;
+  if (CURRENT_TAB === 'briefing') return renderBriefing();
+  if (CURRENT_TAB === 'scan')     return renderScan();
+  if (CURRENT_TAB === 'dossier') {
+    if (d._kind === 'group')      return renderGroup(d);
+    if (d._kind === 'country')    return renderCountry(d);
+    if (d._kind === 'threats' || d._kind === 'ransomware') return renderKev(d);
+    if (d._kind === 'groups')     return renderGroupList();
+    if (d._kind === 'iocs')       return renderIocs(d);
+    if (d._kind === 'exposure')   return renderExposure(d);
+    if (d._kind === 'wanted')     return renderWanted(d);
+    if (d._kind === 'sanctions')  return renderSanctions(d);
+    if (d._kind === 'money')      return renderMoney(d);
+    $("body").innerHTML = `<div class="hint">Pick an action above or click a marker on the globe.</div>`;
+    return;
+  }
+  if (CURRENT_TAB === 'results') return renderSearchResults(d);
+}
+
+function renderBriefing() {
+  const d = CURRENT_DATA;
+  if (d._kind !== 'briefing') {
+    $("body").innerHTML = `<div class="hint">Press <strong>BRIEFING</strong> for an AI-synthesized commander's intel report.</div>`;
+    return;
+  }
+  const sources = (d.sources||[]).map(s=>`<span class="badge">${s}</span>`).join(' ');
+  const ctx = d.context ? `
+    <h3>SYNTHESIZED FROM</h3>
+    <div class="small">APT actors: ${(d.context.groups||[]).join(', ') || '—'}</div>
+    <div class="small">Active CVEs: ${(d.context.cves||[]).join(', ') || '—'}</div>` : '';
+  $("body").innerHTML = `
+    <h3>QUERY</h3><div>${escapeHtml(d.query || 'current threat picture')}</div>
+    <h3>OPEN-SOURCE FEEDS</h3><div>${sources}</div>
+    ${ctx}
+    <h3>BRIEFING (UNCLASSIFIED // FOUO)</h3>
+    <div class="briefing">${escapeHtml(d.briefing || '(empty)').replace(/===([A-Z ]+)===/g,'<h4>$1</h4>')}</div>
+  `;
+}
+
+function renderScan() {
+  const d = CURRENT_DATA;
+  if (d._kind !== 'scan') { $("body").innerHTML = '<div class="hint">Type an indicator and press LIVE SCAN.</div>'; return; }
+  const r = d.results || {};
+  const cards = Object.keys(r).map(k => {
+    const v = r[k];
+    const skipped = v && v._skip ? `<span class="small">${v._skip}</span>` : '';
+    const err = v && v._error ? `<span class="small" style="color:var(--bad)">${v._error}</span>` : '';
+    const status = v && v._status ? `<span class="small">HTTP ${v._status}</span>` : '';
+    const body = !skipped && !err && !status ? JSON.stringify(v, null, 2).slice(0, 1200) : '';
+    return `<div class="scan-source">
+      <h4>${k}</h4>
+      ${skipped || err || status}
+      ${body ? `<pre>${escapeHtml(body)}</pre>` : ''}
+    </div>`;
+  }).join('');
+  $("body").innerHTML = `
+    <h3>LIVE SCAN · ${escapeHtml(d.query)}</h3>
+    <div class="small">indicator type: <strong>${d.kind}</strong> · ${(d.sources||[]).length} sources hit · fetched ${d.fetched_at}</div>
+    ${cards}
+  `;
+}
+
+function renderGroup(d) {
+  const g = d.group;
+  const techs = (d.techniques||[]).map(t =>
+    `<span class="ttp" title="${escapeHtml(t.description||'')}">${t.id} ${escapeHtml(t.name)}</span>`).join('');
+  const kevs = (d.related_kev||[]).map(v => `
+    <div class="cve">
+      <span class="id">${v.cve}</span>
+      <span class="name"><strong>${escapeHtml(v.vendor||'')} ${escapeHtml(v.product||'')}</strong> — ${escapeHtml(v.name||'')}</span>
+      ${v.ransomware==='Known' ? '<span class="ransom">RANSOM</span>' : ''}
+    </div>`).join('');
+  $("body").innerHTML = `
+    <h3>APT GROUP · ${escapeHtml(g.name)}</h3>
+    <div><span class="badge" style="color:${COUNTRY_COLOR[g.country]||'#5fb4ff'}">${g.country||'unattributed'}</span>
+         <span class="small">${escapeHtml(g.actor||'')}</span></div>
+    <div class="small" style="margin-top:5px">aliases: ${(g.aliases||[]).join(', ')||'—'}</div>
+    <div style="margin-top:8px;line-height:1.5">${escapeHtml(g.description||'')}</div>
+    <h3>MITRE ATT&CK · TECHNIQUES (${(d.techniques||[]).length})</h3>
+    <div>${techs || '<span class="hint">none mapped</span>'}</div>
+    <h3>CISA KEV · LIKELY-USED VULNS</h3>
+    ${kevs || '<div class="hint">no direct vendor match</div>'}
+    <h3>LIVE IOCS · abuse.ch ThreatFox</h3>
+    ${(d.related_iocs||[]).map(i =>
+      `<div class="small">${i.type} · <strong>${escapeHtml(i.ioc||'')}</strong> · ${escapeHtml(i.malware||'')}</div>`
+    ).join('') || '<div class="hint">no recent IOCs match</div>'}
+  `;
+}
+
+function renderCountry(d) {
+  $("body").innerHTML = `
+    <h3>${escapeHtml(d.country.toUpperCase())} · ATTRIBUTED APT GROUPS (${d.groups.length})</h3>
+    ${d.groups.map(g => `
+      <div class="card" onclick="openGroup('${g.id}')">
+        <div class="title"><strong>${escapeHtml(g.name)}</strong>
+          <span class="country" style="color:${COUNTRY_COLOR[d.country]}">${d.country}</span></div>
+        <div class="desc">${escapeHtml(g.actor||'—')}</div>
+        <div style="margin-top:5px">${(g.techniques||[]).map(t=>`<span class="ttp">${t}</span>`).join('')}</div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderKev(d) {
+  const ransomOnly = d._kind === 'ransomware';
+  const list = (d.summary.kev_recent||[]);
+  $("body").innerHTML = `
+    <h3>${ransomOnly?'RANSOMWARE-LINKED — ':''}ACTIVELY EXPLOITED CVES <span class="small">CISA KEV · catalog ${(d.summary.kev_released||'').slice(0,10)}</span></h3>
+    ${list.map(v => `
+      <div class="cve">
+        <span class="id">${v.cve}</span>
+        <span class="name"><strong>${escapeHtml(v.vendor||'')} ${escapeHtml(v.product||'')}</strong> — ${escapeHtml(v.name||'')}<br>
+          <span class="small">added ${v.date_added} · due ${v.due_date} ${v.ransomware==='Known' ? '· <span class="ransom">RANSOMWARE</span>' : ''}</span></span>
+      </div>`).join('')}
+    <div class="small" style="margin-top:10px">total in catalog: ${d.summary.kev_count} · ${d.summary.kev_ransomware} ransomware-linked</div>
+  `;
+}
+
+async function renderGroupList() {
+  const j = await fetch('/intel/map').then(r=>r.json());
+  const flat = []; j.markers.forEach(m => m.groups.forEach(g => flat.push({...g, country:m.country})));
+  flat.sort((a,b) => a.name.localeCompare(b.name));
+  $("body").innerHTML = `
+    <h3>APT GROUPS · ATTRIBUTED · MITRE ATT&CK</h3>
+    ${flat.map(g => `
+      <div class="card" onclick="openGroup('${g.id}')">
+        <div class="title"><strong>${escapeHtml(g.name)}</strong>
+          <span class="country" style="color:${COUNTRY_COLOR[g.country]||'#5fb4ff'}">${g.country||''}</span></div>
+        <div class="desc">${escapeHtml(g.actor||'')}</div>
+        <div style="margin-top:5px">${(g.techniques||[]).map(t=>`<span class="ttp">${t}</span>`).join('')}</div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderIocs(d) {
+  const iocs = d.summary.ioc_sample || [];
+  $("body").innerHTML = `
+    <h3>LIVE MALWARE IOCS · abuse.ch ThreatFox</h3>
+    <div class="small">${d.summary.live_iocs} indicators observed in the wild within last 7 days. Click <strong>LIVE SCAN</strong> with an IOC to enrich it.</div>
+    ${iocs.map(i => `
+      <div class="card">
+        <div class="title"><strong>${escapeHtml(i.malware||'unknown')}</strong>
+          <span class="country">${i.type||''}</span></div>
+        <div class="desc"><code>${escapeHtml(i.ioc||'')}</code></div>
+        <div class="small">first seen: ${i.first_seen||''} · reporter: ${escapeHtml(i.reporter||'')} · confidence: ${i.confidence||''}</div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderExposure(d) {
+  const e = d.exposure;
+  $("body").innerHTML = `
+    <h3>OUR EXPOSURE · DoD/Army stack × CISA KEV</h3>
+    <div class="small">${e.totals.vendors_with_active_exploits} of ${e.vendors.length} vendors have actively-exploited CVEs · ${e.totals.total_active_exploits} total open exploits · ${e.totals.total_ransomware_used} ransomware-used.</div>
+    ${e.vendors.map(v => `
+      <div class="card">
+        <div class="title">
+          <strong>${escapeHtml(v.vendor)}</strong>
+          <span class="risk risk-${v.risk}">${v.risk}</span>
+        </div>
+        <div class="desc">${escapeHtml(v.use)}</div>
+        <div class="small" style="margin-top:5px">
+          <strong style="color:${v.kev_count>0?'var(--bad)':'var(--ok)'}">${v.kev_count}</strong> active CVEs ·
+          <strong style="color:${v.ransom_count>0?'var(--crit)':'var(--ok)'}">${v.ransom_count}</strong> ransomware-used ·
+          mission criticality: ${v.criticality}
+        </div>
+        ${v.recent.length ? `<div class="small" style="margin-top:5px">Recent: ${v.recent.map(c=>`<a style="color:var(--accent);cursor:pointer" onclick="$('q').value='${c.cve}';liveScan()">${c.cve}</a>`).join(', ')}</div>` : ''}
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderWanted(d) {
+  const w = d.sanctions.wanted || [];
+  $("body").innerHTML = `
+    <h3>FBI / STATE DEPT · WANTED CYBER ACTORS</h3>
+    <div class="small">Real public bounties on indicted nation-state operators. Sources: FBI Cyber Most Wanted, State Dept Rewards for Justice, DoJ press releases. Total outstanding: <strong class="gold">$${(d.sanctions.wanted_bounty_usd||0).toLocaleString()}</strong>.</div>
+    ${w.map(p => `
+      <div class="card">
+        <div class="title">
+          <strong>${escapeHtml(p.name)}</strong>
+          <span class="country" style="color:${COUNTRY_COLOR[p.country]||'var(--gold)'}">${p.country}</span>
+        </div>
+        <div class="desc">${escapeHtml(p.unit)}</div>
+        <div class="small" style="margin-top:5px">
+          <strong class="gold">$${(p.bounty_usd||0).toLocaleString()}</strong> · ${escapeHtml(p.bounty_source)}
+        </div>
+        <div class="small">${escapeHtml(p.indictment)}</div>
+        <div class="small" style="margin-top:4px">linked APTs: ${(p.linked_apts||[]).map(a=>`<span class="ttp">${escapeHtml(a)}</span>`).join('')}</div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderSanctions(d) {
+  const s = d.sanctions;
+  const tc = s.top_countries || {};
+  $("body").innerHTML = `
+    <h3>OFAC SDN · TREASURY SANCTIONS</h3>
+    <div class="small">Specially Designated Nationals & Blocked Persons: <strong>${s.ofac_total.toLocaleString()}</strong> entities · <strong>${s.ofac_addresses.toLocaleString()}</strong> linked addresses · <strong>${s.ofac_aliases.toLocaleString()}</strong> aliases.</div>
+    <h3>TOP DESIGNATED COUNTRIES</h3>
+    ${Object.entries(tc).map(([c,n]) => `
+      <div class="card" onclick="$('q').value='${c}';runSearch()">
+        <div class="title"><strong>${escapeHtml(c)}</strong>
+          <span class="country gold">${n.toLocaleString()} entities</span></div>
+      </div>`).join('')}
+    <h3>SEARCH</h3>
+    <div class="hint">Type a name or country in the command bar then <strong>QUERY ALL AGENCIES</strong> to search OFAC SDN.</div>
+  `;
+}
+
+function renderMoney(d) {
+  const links = (d.sanctions||{}).funding_links || [];
+  $("body").innerHTML = `
+    <h3>MONEY / FUNDING FLOW · OPEN-SOURCE LINKAGES</h3>
+    <div class="small">DoJ indictments + Treasury OFAC + FBI press attribution. Confidence per public US gov sources.</div>
+    ${links.map(l => `
+      <div class="card">
+        <div class="title">
+          <strong>${escapeHtml(l.src)}</strong>
+          <span class="country gold">${l.confidence}</span>
+        </div>
+        <div class="desc" style="margin-top:5px">
+          <span style="color:var(--bad)">${escapeHtml(l.src)}</span>
+          &nbsp;━━ via <em>${escapeHtml(l.via)}</em> ━━&gt;&nbsp;
+          <span style="color:var(--gold)">${escapeHtml(l.dst)}</span>
+        </div>
+        <div class="small" style="margin-top:6px">${escapeHtml(l.evidence)}</div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderSearchResults(d) {
+  const groups = (d.groups||[]).map(g => `
+    <div class="card" onclick="openGroup('${g.id}')">
+      <div class="title"><strong>${escapeHtml(g.name)}</strong>
+        <span class="country" style="color:${COUNTRY_COLOR[g.country]||'#5fb4ff'}">${g.country||''}</span></div>
+      <div class="desc">${escapeHtml((g.description||'').slice(0,200))}</div>
+    </div>`).join('');
+  const kev = (d.kev||[]).map(v => `
+    <div class="cve">
+      <span class="id">${v.cve}</span>
+      <span class="name"><strong>${escapeHtml(v.vendor||'')} ${escapeHtml(v.product||'')}</strong> — ${escapeHtml(v.name||'')}
+        ${v.ransomware==='Known' ? '<span class="ransom">RANSOM</span>' : ''}</span>
+    </div>`).join('');
+  const techs = (d.techniques||[]).map(t => `
+    <div class="card">
+      <div class="title"><strong>${t.id} — ${escapeHtml(t.name)}</strong></div>
+      <div class="desc">${escapeHtml((t.description||'').slice(0,200))}</div>
+    </div>`).join('');
+  const iocs = (d.iocs||[]).map(i => `
+    <div class="cve"><span class="id">${i.type||''}</span>
+      <span class="name"><code>${escapeHtml(i.ioc||'')}</code> — ${escapeHtml(i.malware||'')}</span>
+    </div>`).join('');
+  const ofac = ((d.sanc||{}).ofac||[]).map(e => `
+    <div class="card">
+      <div class="title"><strong>${escapeHtml(e.name)}</strong>
+        <span class="country gold">${escapeHtml(e.program)}</span></div>
+      <div class="desc">${escapeHtml(e.type)} · ${escapeHtml(e.title||'')}</div>
+      ${(e.aliases||[]).length ? `<div class="small">aliases: ${e.aliases.map(escapeHtml).join(', ')}</div>` : ''}
+      ${(e.addresses||[]).length ? `<div class="small">locations: ${e.addresses.map(a=>escapeHtml(a.city)+', '+escapeHtml(a.country)).join(' · ')}</div>` : ''}
+    </div>`).join('');
+  const wanted = ((d.sanc||{}).wanted||[]).map(p => `
+    <div class="card">
+      <div class="title"><strong>${escapeHtml(p.name)}</strong>
+        <span class="country gold">$${(p.bounty_usd||0).toLocaleString()}</span></div>
+      <div class="desc">${escapeHtml(p.unit)} · ${escapeHtml(p.country)}</div>
+      <div class="small">${escapeHtml(p.indictment)}</div>
+    </div>`).join('');
+  $("body").innerHTML = `
+    <h3>SEARCH · "${escapeHtml(d._query||'')}"</h3>
+    ${groups ? `<h3>APT GROUPS (${d.groups.length})</h3>${groups}` : ''}
+    ${kev    ? `<h3>CISA KEV (${d.kev.length})</h3>${kev}` : ''}
+    ${techs  ? `<h3>MITRE TECHNIQUES (${d.techniques.length})</h3>${techs}` : ''}
+    ${iocs   ? `<h3>LIVE IOCS (${d.iocs.length})</h3>${iocs}` : ''}
+    ${ofac   ? `<h3>OFAC SANCTIONS (${(d.sanc.ofac||[]).length})</h3>${ofac}` : ''}
+    ${wanted ? `<h3>FBI / STATE WANTED (${(d.sanc.wanted||[]).length})</h3>${wanted}` : ''}
+    ${!groups&&!kev&&!techs&&!iocs&&!ofac&&!wanted ? '<div class="hint">No matches across any agency feed.</div>' : ''}
+  `;
+}
+
+// ====================== chatbot ======================
+function openChat() {
+  $("chatDrawer").classList.add('open');
+  if (!CHAT_HIST.length) {
+    appendBot("SENTINEL Analyst online. Ask about: APT groups, specific CVEs, CISA KEV exposure on our stack, OFAC-sanctioned actors, money flow to nation-state programs, or recommended actions for your AOR.");
+  }
+  setTimeout(()=>$("chatQ").focus(), 200);
+}
+function closeChat(){ $("chatDrawer").classList.remove('open'); }
+function appendUser(m){ const d=document.createElement('div'); d.className='msg user'; d.textContent=m; $("chatBody").appendChild(d); $("chatBody").scrollTop = 1e9; }
+function appendBot(m){ const d=document.createElement('div'); d.className='msg bot'; d.textContent=m; $("chatBody").appendChild(d); $("chatBody").scrollTop = 1e9; }
+async function sendChat() {
+  const q = $("chatQ").value.trim();
+  if (!q) return;
+  $("chatQ").value = '';
+  appendUser(q);
+  CHAT_HIST.push({role:'user', content:q});
+  const tmp = document.createElement('div'); tmp.className='msg bot'; tmp.innerHTML='<span class="pulse"></span> querying agency feeds…'; $("chatBody").appendChild(tmp);
+  const j = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({q, history: CHAT_HIST}) }).then(r=>r.json());
+  tmp.remove();
+  appendBot(j.answer || '(no answer)');
+  CHAT_HIST.push({role:'assistant', content:j.answer||''});
+}
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") runSearch(); });
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); $("q").focus(); }
+});
+document.addEventListener('DOMContentLoaded', () => {
+  const ci = $("chatQ");
+  if (ci) ci.addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
+});
+
+bootstrap();
+</script>
+</body>
+</html>
