@@ -418,6 +418,17 @@ const PAGE_LABELS = {
   insider_ai:'Insider + AI'
 };
 const MODULE_ORDER = ['cyber_defense','geo_conflict','aml_finance','sanctions','supply_chain','aviation_maritime','disasters','satellite_imagery','insider_ai'];
+const PAGE_SLUGS = {
+  cyber_defense:'cyber-security',
+  geo_conflict:'threat-intelligence',
+  aml_finance:'fraud-aml',
+  sanctions:'sanctions-screening',
+  supply_chain:'supply-chain',
+  aviation_maritime:'air-maritime',
+  disasters:'disaster-response',
+  satellite_imagery:'satellite-imagery',
+  insider_ai:'insider-ai'
+};
 const MODULE_SUB = {
   global:'Decision deck, live sources, world layers',
   cyber_defense:'CISA KEV, MITRE, IOCs, exposure',
@@ -437,7 +448,7 @@ function switchTab(t) {
   if (CURRENT_DATA) renderTab();
 }
 
-function routeFor(id){ return id === 'global' ? '/' : '/module/' + encodeURIComponent(id); }
+function routeFor(id){ return id === 'global' ? '/' : '/' + encodeURIComponent(PAGE_SLUGS[id] || id); }
 
 function syncHash(id) {
   const next = routeFor(id);
@@ -450,8 +461,16 @@ function pageFromHash() {
   if (path === '/' || path === '/index.html') return 'global';
   const m = path.match(/^\/module\/([^/]+)$/);
   if (m) return decodeURIComponent(m[1]);
+  const slug = path.replace(/^\//, '');
+  const found = Object.entries(PAGE_SLUGS).find(([,v]) => v === slug);
+  if (found) return found[0];
   const raw = (window.location.hash || '').replace(/^#\/?/, '');
   return decodeURIComponent(raw || 'global');
+}
+
+function openModulePage(id) {
+  if (id === 'global') return openPage('global');
+  window.location.href = routeFor(id);
 }
 
 function moduleScore(id) {
@@ -468,7 +487,7 @@ function renderModuleGrid(activeId) {
     ...MODULE_ORDER.map(id => ({ id, label:PAGE_LABELS[id] || id }))
   ];
   $("moduleGrid").innerHTML = modules.map(m => `
-    <button class="${m.id===activeId?'active':''}" onclick="openPage('${m.id}')">
+    <button class="${m.id===activeId?'active':''}" onclick="openModulePage('${m.id}')">
       <span class="module-score">${escapeHtml(moduleScore(m.id))}</span>
       <span class="module-title">${escapeHtml(m.label)}</span>
       <span class="module-sub">${escapeHtml(MODULE_SUB[m.id] || 'Multi-source operational module')}</span>
