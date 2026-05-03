@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
 <script src="https://unpkg.com/globe.gl@2.32.4/dist/globe.gl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <style>
   :root {
     --bg:#04060a; --bg2:#080c12; --panel:#0c1218; --line:#1a2129;
@@ -95,7 +96,7 @@
   .page-tabs button.active { color:var(--accent); border-color:var(--accent); }
 
   /* main grid */
-  .main { display:grid; grid-template-columns: 1fr 480px; gap:0;
+  .main { display:grid; grid-template-columns: minmax(390px, 36vw) 1fr; gap:0;
     height: calc(100vh - 33px - 49px - 47px - 84px - 72px - 54px); }
   /* classification + header + commandbar + actions + agencies */
 
@@ -109,7 +110,14 @@
   .globe-overlay .legend i { display:inline-block; width:8px; height:8px; border-radius:50%;
     margin-right:4px; vertical-align:middle; }
   .globe-overlay .live { color:var(--ok); margin-top:4px; }
-  .layer-panel { position:absolute; left:14px; bottom:14px; z-index:6; width:290px;
+  .live-stream { position:absolute; right:14px; top:14px; z-index:6; width:min(330px, calc(100% - 28px));
+    background:rgba(8,12,17,0.9); border:1px solid var(--line); border-radius:4px; padding:8px 10px; }
+  .live-stream h3 { margin:0 0 6px; color:var(--ok); font-size:9px; letter-spacing:1.5px; text-transform:uppercase; }
+  .live-stream .item { display:grid; grid-template-columns:54px 1fr; gap:7px; padding:5px 0;
+    border-top:1px dotted #223044; color:var(--mute); font-size:9.5px; line-height:1.35; }
+  .live-stream .item:first-of-type { border-top:none; }
+  .live-stream .item b { color:var(--gold); font-weight:700; }
+  .layer-panel { position:absolute; left:10px; bottom:10px; z-index:6; width:250px;
     background:rgba(8,12,17,0.94); border:1px solid var(--line); border-radius:4px; padding:9px 10px; }
   .layer-panel h3 { margin:0 0 7px; color:var(--mute); font-size:9px; letter-spacing:2px; text-transform:uppercase; }
   .layer-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:5px; }
@@ -117,7 +125,7 @@
     border-radius:3px; padding:5px 6px; cursor:pointer; font:inherit; font-size:9px; letter-spacing:.7px;
     text-align:left; text-transform:uppercase; }
   .layer-grid button.active { color:var(--accent); border-color:var(--accent); background:#101824; }
-  .zoom-controls { position:absolute; right:14px; bottom:14px; z-index:7; display:flex; flex-direction:column; gap:5px; }
+  .zoom-controls { position:absolute; right:10px; bottom:10px; z-index:7; display:flex; flex-direction:column; gap:5px; }
   .zoom-controls button { width:34px; height:34px; background:#0a0f15; color:var(--fg);
     border:1px solid var(--line); border-radius:4px; font:inherit; font-size:18px; cursor:pointer; }
   .zoom-controls button:hover { border-color:var(--accent); color:var(--accent); }
@@ -131,6 +139,13 @@
     padding:9px 12px; cursor:pointer; font:inherit; font-size:10px;
     letter-spacing:2px; text-transform:uppercase; border-bottom:2px solid transparent; }
   .dossier-tabs button.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .report-actions { display:flex; gap:6px; align-items:center; flex-wrap:wrap; padding:7px 10px;
+    border-bottom:1px solid var(--line); background:#080c12; }
+  .report-actions button { background:#0a0f15; color:var(--mute); border:1px solid var(--line);
+    border-radius:4px; padding:6px 8px; cursor:pointer; font:inherit; font-size:9.5px; letter-spacing:.9px;
+    text-transform:uppercase; }
+  .report-actions button:hover { color:var(--accent); border-color:var(--accent); }
+  .report-actions button.risk { color:#fff; border-color:var(--crit); background:#32101a; }
   .dossier-body { flex:1; overflow:auto; padding:12px 14px; }
   .dossier-body h3 { font-size:10.5px; color:var(--mute); margin:14px 0 6px;
     text-transform:uppercase; letter-spacing:2px; font-weight:600;
@@ -269,6 +284,7 @@
     border-radius:4px; background:#020306; margin-top:8px; }
   .reason { margin-top:7px; padding:7px 8px; background:#070b10; border:1px dashed #253244;
     border-radius:4px; color:#9aa6b2; line-height:1.45; }
+  .risk-note { border-left:3px solid var(--crit); }
   .intel-table { display:grid; gap:6px; }
   .intel-row { display:grid; grid-template-columns: 118px 1fr; gap:8px; padding:7px 8px;
     border:1px solid var(--line); background:#070b10; border-radius:4px; }
@@ -341,6 +357,10 @@
       </div>
       <div class="live"><span class="pulse"></span> live signals · <span id="ioc-count">…</span> cyber IOCs</div>
     </div>
+    <div class="live-stream" id="liveStream">
+      <h3><span class="pulse"></span> Incoming Live Signals</h3>
+      <div class="item"><b>BOOT</b><span>Waiting for public feeds...</span></div>
+    </div>
     <div class="layer-panel">
       <h3>3D Map Layers</h3>
       <div class="layer-grid" id="layerGrid"></div>
@@ -358,6 +378,13 @@
       <button data-tab="dossier" onclick="switchTab('dossier')">DOSSIER</button>
       <button data-tab="results" onclick="switchTab('results')">RESULTS</button>
       <button data-tab="scan" onclick="switchTab('scan')">LIVE SCAN</button>
+    </div>
+    <div class="report-actions">
+      <button class="risk" onclick="addRiskPointer()">Add Risk Pointer</button>
+      <button onclick="addRiskNote()">Add Note</button>
+      <button onclick="emailReport()">Email</button>
+      <button onclick="printReport()">Print/Share</button>
+      <button onclick="downloadPdfReport()">Download PDF</button>
     </div>
     <div class="dossier-body" id="body">
       <div class="hint">Global monitor is loading. Use top-right buttons to open Cyber Security, Threat, Fraud + AML, Satellite, and other pages as internal tabs.</div>
@@ -392,6 +419,8 @@ let CURRENT_PAGE = 'global';
 let CURRENT_MAP = { filterModule:null, extraMarkers:[] };
 let DECISION_LOOKUP = {};
 let COUNTRY_BOUNDARIES = [], US_STATE_BOUNDARIES = [];
+let RISK_NOTES = [];
+let LIVE_TICK = 0;
 const LAYERS = {
   boundaries:'Country Borders',
   states:'US State Borders',
@@ -560,11 +589,49 @@ function renderGlobalMetrics(metrics) {
     </button>`).join('');
 }
 
+function liveSignalItems() {
+  const live = ((GLOBAL||{}).live)||{};
+  const items = [];
+  (((live.map_events)||[]).slice(0,8)).forEach(e => items.push({
+    tag:e.source || 'GEO',
+    text:`${e.kind || 'event'}: ${e.name || 'live event'} ${e.severity ? '(' + e.severity + ')' : ''}`,
+  }));
+  ((((live.signals||{}).gdelt_articles||{}).items||[]).slice(0,8)).forEach(a => items.push({
+    tag:'GDELT',
+    text:a.title || 'live media intelligence signal',
+  }));
+  ((((live.signals||{}).opensky_aircraft||{}).items||[]).slice(0,6)).forEach(a => items.push({
+    tag:'AIR',
+    text:`${a.callsign || a.icao24 || 'aircraft'} ${a.origin_country || ''} alt ${a.altitude_m || 'n/a'}m`,
+  }));
+  (((GLOBAL||{}).decision_deck)||[]).slice(0,5).forEach(d => items.push({
+    tag:d.band || 'RISK',
+    text:`${d.score || ''} ${d.title || 'decision score'}`,
+  }));
+  if (!items.length) items.push(
+    {tag:'POLL', text:'Awaiting NASA/USGS/NOAA/GDELT/OpenSky refresh or rate-limit recovery.'},
+    {tag:'READY', text:'Click any marker or module to produce a concise current-context report.'}
+  );
+  return items;
+}
+
+function renderLiveStream() {
+  const el = $("liveStream");
+  if (!el) return;
+  const items = liveSignalItems();
+  LIVE_TICK = (LIVE_TICK + 1) % Math.max(items.length, 1);
+  const visible = Array.from({length: Math.min(5, items.length)}, (_, i) => items[(LIVE_TICK + i) % items.length]);
+  el.innerHTML = `<h3><span class="pulse"></span> Incoming Live Signals</h3>` + visible.map(x => `
+    <div class="item"><b>${escapeHtml(String(x.tag).slice(0,8))}</b><span>${escapeHtml(String(x.text).slice(0,120))}</span></div>
+  `).join('');
+}
+
 async function refreshGlobalLive() {
   try {
     const live = await fetch('/monitor/global?live=true').then(r=>r.json());
     GLOBAL = live;
     renderGlobalMetrics(live.metrics || []);
+    renderLiveStream();
     if (CURRENT_DATA && CURRENT_DATA._kind === 'global') {
       CURRENT_DATA = { _kind:'global', ...live };
       renderMapMarkers(null, globalExtraMarkers());
@@ -572,6 +639,7 @@ async function refreshGlobalLive() {
     }
   } catch (e) {
     console.warn('live global refresh failed', e);
+    renderLiveStream();
   }
 }
 
@@ -584,6 +652,7 @@ async function openPage(id, push=true) {
   if (id === 'global') {
     GLOBAL = await fetch('/monitor/global?live=true').then(r=>r.json());
     renderGlobalMetrics(GLOBAL.metrics || []);
+    renderLiveStream();
     CURRENT_DATA = { _kind:'global', ...GLOBAL };
     renderMapMarkers(null, globalExtraMarkers());
     flyToPage(id);
@@ -613,6 +682,7 @@ async function bootstrap() {
   GLOBAL = global;
   renderPageTabs('global');
   renderGlobalMetrics(global.metrics || []);
+  renderLiveStream();
   $("kev-rel").textContent = "CISA KEV " + (s.kev_released||"").slice(0,10);
   $("ioc-count").textContent = fmtNum(s.live_iocs);
 
@@ -647,6 +717,7 @@ async function bootstrap() {
   await initGlobe();
   await openPage(pageFromHash(), false);
   refreshGlobalLive();
+  setInterval(renderLiveStream, 3500);
 }
 
 async function initGlobe() {
@@ -1010,6 +1081,7 @@ async function loadMission(moduleId, push=true) {
   if (push) syncHash(moduleId);
   GLOBAL = await fetch('/monitor/global?live=true').then(r=>r.json());
   renderGlobalMetrics(GLOBAL.metrics || []);
+  renderLiveStream();
   const j = await fetch('/mission/module/'+encodeURIComponent(moduleId)).then(r=>r.json());
   CURRENT_DATA = { _kind:'mission', ...j };
   renderMapMarkers(moduleId, moduleExtraMarkers(moduleId));
@@ -1114,6 +1186,145 @@ function metricCards(metrics) {
 
 function sourcePills(sources) {
   return (sources||[]).map(s => `<span class="badge" title="${escapeHtml(s.agency||'')} · ${escapeHtml(s.access||'')}">${escapeHtml(s.name||s)}</span>`).join(' ');
+}
+
+function currentDecision() {
+  const d = CURRENT_DATA || {};
+  if (d.decision) return d.decision;
+  if (d.imagery && d.imagery.decision) return d.imagery.decision;
+  if (d._kind === 'global') return ((d.decision_deck||[])[0]) || null;
+  return null;
+}
+
+function currentCoordinate() {
+  const d = CURRENT_DATA || {};
+  const decision = currentDecision();
+  if (decision && decision.lat != null && decision.lng != null) return { lat:Number(decision.lat), lng:Number(decision.lng) };
+  if (d.coordinate) return { lat:Number(d.coordinate.lat), lng:Number(d.coordinate.lng) };
+  if (d.hotspot) return { lat:Number(d.hotspot.lat), lng:Number(d.hotspot.lng) };
+  if (d.lat != null && d.lng != null) return { lat:Number(d.lat), lng:Number(d.lng) };
+  const h = ((MISSION||{}).hotspots||[]).find(x => CURRENT_PAGE === 'global' ? x.severity === 'CRITICAL' : x.module === CURRENT_PAGE);
+  return h ? { lat:Number(h.lat), lng:Number(h.lng) } : null;
+}
+
+function currentReportSummary() {
+  const d = CURRENT_DATA || {};
+  const decision = currentDecision() || {};
+  const title = decision.title || d.title || d.label || d.country || ((d.hotspot||{}).name) || PAGE_LABELS[CURRENT_PAGE] || 'SENTINEL current context';
+  const score = decision.score != null ? `${decision.score} ${decision.band || ''}` : 'No score available';
+  const action = decision.recommended_action || ((d.actions||[])[0]) || 'Review current indicators and confirm with source evidence.';
+  const evidence = (decision.evidence || []).slice(0,5);
+  const sources = (decision.sources || (d.sources_detail||[]).map(s=>s.name) || []).slice(0,8);
+  const notes = RISK_NOTES.filter(n => !n.page || n.page === CURRENT_PAGE).slice(-5).map(n => `${n.severity}: ${n.text}`);
+  return {
+    title,
+    page: PAGE_LABELS[CURRENT_PAGE] || CURRENT_PAGE,
+    tab: CURRENT_TAB,
+    score,
+    action,
+    evidence,
+    sources,
+    notes,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+function reportText() {
+  const r = currentReportSummary();
+  return [
+    `SENTINEL Concise Report`,
+    `Generated: ${r.generated_at}`,
+    `Context: ${r.page} / ${r.tab}`,
+    `Subject: ${r.title}`,
+    `Score: ${r.score}`,
+    `Recommended action: ${r.action}`,
+    ``,
+    `Evidence:`,
+    ...(r.evidence.length ? r.evidence.map(x => `- ${x}`) : ['- No evidence attached to the current context.']),
+    ``,
+    `Sources:`,
+    ...(r.sources.length ? r.sources.map(x => `- ${x}`) : ['- Source list unavailable for current context.']),
+    ``,
+    `Risk notes:`,
+    ...(r.notes.length ? r.notes.map(x => `- ${x}`) : ['- No risk notes added.']),
+  ].join('\n');
+}
+
+function renderRiskNotes() {
+  if (!RISK_NOTES.length) return '';
+  return `
+    <h3>RISK NOTES / ACTION LOG</h3>
+    ${RISK_NOTES.map((n, idx) => ({...n, idx})).slice(-6).reverse().map(n => `
+      <div class="card risk-note" onclick="focusRiskNote(${n.idx})">
+        <div class="title"><strong>${escapeHtml(n.text)}</strong><span class="risk risk-${escapeHtml(n.severity)}">${escapeHtml(n.severity)}</span></div>
+        <div class="small">${escapeHtml(n.page || CURRENT_PAGE)} · ${escapeHtml(n.time)}</div>
+      </div>`).join('')}
+  `;
+}
+
+function focusRiskNote(idx) {
+  const n = RISK_NOTES[idx];
+  if (!n || n.lat == null || n.lng == null) return;
+  focusMapDatum({ ...n, name:n.text, marker_kind:'focus', source:'Analyst note' }, n.page || CURRENT_PAGE, true);
+}
+
+function addRiskPointer() {
+  const coord = currentCoordinate();
+  if (!coord) { alert('No coordinate is selected yet. Click the globe or a hotspot first.'); return; }
+  const decision = currentDecision() || {};
+  const text = prompt('Risk pointer note', decision.title || `Risk on ${PAGE_LABELS[CURRENT_PAGE] || CURRENT_PAGE}`);
+  if (!text) return;
+  const severity = (decision.score || 75) >= 90 ? 'CRITICAL' : (decision.score || 75) >= 75 ? 'HIGH' : 'MEDIUM';
+  const note = { text, severity, score:decision.score || 75, page:CURRENT_PAGE, lat:coord.lat, lng:coord.lng, time:new Date().toISOString() };
+  RISK_NOTES.push(note);
+  focusMapDatum({ ...note, name:text, marker_kind:'focus', source:'Analyst risk pointer' }, CURRENT_PAGE, true);
+  renderTab();
+}
+
+function addRiskNote() {
+  const text = prompt('Add concise analyst note for current context');
+  if (!text) return;
+  const coord = currentCoordinate() || {};
+  const decision = currentDecision() || {};
+  RISK_NOTES.push({
+    text, severity:(decision.score || 60) >= 90 ? 'CRITICAL' : (decision.score || 60) >= 75 ? 'HIGH' : 'MEDIUM',
+    score:decision.score || 60, page:CURRENT_PAGE, lat:coord.lat, lng:coord.lng, time:new Date().toISOString()
+  });
+  renderTab();
+}
+
+function emailReport() {
+  const subject = encodeURIComponent(`SENTINEL report: ${currentReportSummary().title}`);
+  const body = encodeURIComponent(reportText());
+  window.location.href = `mailto:?subject=${subject}&body=${body}`;
+}
+
+function printReport() {
+  const w = window.open('', '_blank');
+  w.document.write(`<pre style="font-family:monospace;white-space:pre-wrap">${escapeHtml(reportText())}</pre>`);
+  w.document.close();
+  w.focus();
+  w.print();
+}
+
+function downloadPdfReport() {
+  const jsPDF = window.jspdf && window.jspdf.jsPDF;
+  if (!jsPDF) return printReport();
+  const r = currentReportSummary();
+  const doc = new jsPDF({ unit:'pt', format:'letter' });
+  const margin = 42;
+  let y = 46;
+  doc.setFont('courier','bold'); doc.setFontSize(14); doc.text('SENTINEL Concise Report', margin, y);
+  y += 22;
+  doc.setFont('courier','normal'); doc.setFontSize(9);
+  const lines = doc.splitTextToSize(reportText(), 520);
+  lines.forEach(line => {
+    if (y > 740) { doc.addPage(); y = 46; }
+    doc.text(line, margin, y);
+    y += 12;
+  });
+  const safe = String(r.title || 'sentinel-report').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,50);
+  doc.save(`${safe || 'sentinel-report'}.pdf`);
 }
 
 function expansionPanel(expansion) {
@@ -1244,6 +1455,7 @@ function renderGlobal(d) {
     ${signals}
     <h3>SATELLITE / IMAGERY LAYERS</h3>
     <div class="card" onclick="openPage('satellite_imagery')">${layers || '<span class="hint">No layers</span>'}</div>
+    ${renderRiskNotes()}
   `;
 }
 
@@ -1282,6 +1494,7 @@ function renderSatellite(d) {
     ${events || '<div class="hint">No live event geometry returned yet. Check venue Wi-Fi or refresh.</div>'}
     <h3>GDELT INTEL WATCH</h3>
     <div class="card">${gdelt || '<span class="hint">GDELT articles loading.</span>'}</div>
+    ${renderRiskNotes()}
   `;
 }
 
@@ -1308,6 +1521,7 @@ function renderEventDrilldown(e) {
     <div class="card" onclick="analyzeImagery(${Number(event.lat)||0},${Number(event.lng)||0})"><div class="title"><strong>Run Imagery Triage Here</strong><span class="country">NASA GIBS</span></div><div class="desc">Pull public imagery preview and score thermal, weather, mobility, and strategic activity cues.</div></div>
     <div class="card" onclick="openPage('satellite_imagery')"><div class="title"><strong>Satellite + Imagery</strong><span class="country">NASA / USGS</span></div><div class="desc">Open public imagery sources and live geospatial feeds.</div></div>
     <div class="card" onclick="openPage('supply_chain')"><div class="title"><strong>Supply Chain</strong><span class="country">Cascades</span></div><div class="desc">Check vendor, port, and route exposure.</div></div>
+    ${renderRiskNotes()}
   `;
 }
 
@@ -1364,6 +1578,7 @@ function renderGeoDossier(d) {
     <div class="card">${assets}</div>
     <h3>AVAILABLE IMAGERY CONTEXT</h3>
     <div class="card">${imagery}</div>
+    ${renderRiskNotes()}
   `;
 }
 
@@ -1395,6 +1610,7 @@ function renderImageryAnalysis(d) {
     <div class="card">${events || '<span class="hint">No live events within 750 km.</span>'}</div>
     <h3>OPEN IMAGERY LAYERS</h3>
     ${previews}
+    ${renderRiskNotes()}
   `;
 }
 
@@ -1512,6 +1728,7 @@ function renderMission(d) {
     ${renderDeepDive(d)}
     <h3>MAP HOTSPOTS</h3>
     ${hotspots || '<div class="hint">No dedicated hotspots yet. The source catalog is still active for this module.</div>'}
+    ${renderRiskNotes()}
   `;
 }
 
@@ -1536,6 +1753,7 @@ function renderHotspot(d) {
     ${sdn ? `<h3>COUNTRY SANCTIONS SAMPLE</h3><div class="card">${sdn}</div>` : ''}
     <h3>NEXT MOVES</h3>
     ${(d.recommended_next||[]).map(x=>`<div class="small" style="padding:4px 0;border-bottom:1px dotted var(--line)">▸ ${escapeHtml(x)}</div>`).join('')}
+    ${renderRiskNotes()}
   `;
 }
 
