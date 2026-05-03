@@ -391,7 +391,10 @@ let OPEN_PAGES = [{ id:'global', label:'Global Monitor' }];
 let CURRENT_PAGE = 'global';
 let CURRENT_MAP = { filterModule:null, extraMarkers:[] };
 let DECISION_LOOKUP = {};
+let COUNTRY_BOUNDARIES = [], US_STATE_BOUNDARIES = [];
 const LAYERS = {
+  boundaries:'Country Borders',
+  states:'US State Borders',
   cyber:'Cyber Arcs',
   strategic:'Strategic Hotspots',
   conflict:'Conflict',
@@ -406,7 +409,7 @@ const LAYERS = {
   command:'Command Targets',
   labels:'Labels',
 };
-let ACTIVE_LAYERS = new Set(['cyber','strategic','conflict','shipping','disaster','satellite','finance','command']);
+let ACTIVE_LAYERS = new Set(['boundaries','states','cyber','strategic','conflict','shipping','disaster','satellite','finance','command']);
 
 function fmtNum(n){ return (n||0).toLocaleString(); }
 function nowTick(){ $("now").textContent = new Date().toISOString().replace('T',' ').slice(0,19) + 'Z'; }
@@ -532,6 +535,7 @@ function toggleLayer(id) {
   else ACTIVE_LAYERS.add(id);
   renderLayerControls();
   updateGlobeLayers();
+  updateBoundaryVisibility();
 }
 
 function setPageLayers(id) {
@@ -543,6 +547,8 @@ function setPageLayers(id) {
   else if (id === 'geo_conflict') ACTIVE_LAYERS = new Set(['conflict','cyber','strategic','finance','satellite']);
   else if (id === 'supply_chain') ACTIVE_LAYERS = new Set(['shipping','disaster','weather','strategic','command']);
   else ACTIVE_LAYERS = new Set(['cyber','strategic','conflict','shipping','disaster','satellite','finance','command']);
+  ACTIVE_LAYERS.add('boundaries');
+  ACTIVE_LAYERS.add('states');
   renderLayerControls();
 }
 
@@ -658,10 +664,12 @@ async function initGlobe() {
   G.controls().autoRotateSpeed = 0.4;
   G.pointOfView({ lat: 30, lng: 10, altitude: 2.0 });
   G.controls().addEventListener('start', stopGlobeRotation);
+  G.controls().addEventListener('change', updateBoundaryVisibility);
 
   // Load arcs + markers
   const j = await fetch('/globe/arcs').then(r=>r.json());
   ARCS = j.arcs; TARGETS = j.targets; MARKERS = j.origins;
+  loadBoundaryLayers();
 
   G.arcsData(ARCS)
     .arcColor(a => [a.color, '#5fb4ff'])
@@ -707,12 +715,59 @@ async function initGlobe() {
   renderLayerControls();
 }
 
+async function loadBoundaryLayers() {
+  const sources = [
+    fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson').then(r=>r.json()).catch(()=>null),
+    fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json').then(r=>r.json()).catch(()=>null),
+  ];
+  const [world, states] = await Promise.all(sources);
+  COUNTRY_BOUNDARIES = (world && world.features) ? world.features : [];
+  US_STATE_BOUNDARIES = (states && states.features) ? states.features : [];
+  updateBoundaryVisibility();
+}
+
+function countryName(f) {
+  const p = (f && f.properties) || {};
+  return p.name || p.NAME || p.ADMIN || p.admin || p.country || 'Country';
+}
+
+function stateName(f) {
+  const p = (f && f.properties) || {};
+  return p.name || p.NAME || p.STATE_NAME || p.state || 'State';
+}
+
+function updateBoundaryVisibility() {
+  if (!G) return;
+  const altitude = (G.pointOfView() || {}).altitude || 2;
+  const showCountries = ACTIVE_LAYERS.has('boundaries');
+  const showStates = ACTIVE_LAYERS.has('states') && altitude <= 1.65;
+  const countryColor = altitude < 1.35 ? 'rgba(135,170,205,0.30)' : 'rgba(135,170,205,0.18)';
+  G.polygonsData([
+    ...(showCountries ? COUNTRY_BOUNDARIES.map(f => ({...f, _boundary:'country'})) : []),
+    ...(showStates ? US_STATE_BOUNDARIES.map(f => ({...f, _boundary:'state'})) : []),
+  ])
+    .polygonGeoJsonGeometry(d => d.geometry)
+    .polygonCapColor(() => 'rgba(0,0,0,0)')
+    .polygonSideColor(() => 'rgba(0,0,0,0)')
+    .polygonStrokeColor(d => d._boundary === 'state' ? 'rgba(212,175,55,0.36)' : countryColor)
+    .polygonAltitude(d => d._boundary === 'state' ? 0.004 : 0.002)
+    .polygonLabel(d => markerTooltip({
+      name: d._boundary === 'state' ? stateName(d) : countryName(d),
+      kind: d._boundary === 'state' ? 'US state boundary' : 'country boundary',
+      source: d._boundary === 'state' ? 'PublicaMundi US states GeoJSON' : 'World GeoJSON boundary layer',
+      why: d._boundary === 'state'
+        ? 'State boundaries appear only when zoomed in to avoid clutter.'
+        : 'Country outlines are intentionally low-contrast for dense regions like Europe.',
+    }));
+}
+
 function zoomGlobe(delta) {
   if (!G) return;
   stopGlobeRotation();
   const pov = G.pointOfView();
   const altitude = Math.max(0.7, Math.min(4.2, (pov.altitude || 2) + delta));
   G.pointOfView({ ...pov, altitude }, 450);
+  setTimeout(updateBoundaryVisibility, 500);
 }
 
 function stopGlobeRotation() {
