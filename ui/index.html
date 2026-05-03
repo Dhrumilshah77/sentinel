@@ -445,6 +445,18 @@ const MODULE_SUB = {
   insider_ai:'UEBA, data exfil, model tampering'
 };
 
+const MODULE_LIVE_KEYWORDS = {
+  cyber_defense:['cyber','ransomware','malware','vulnerability','breach','cve','ddos','phishing'],
+  aml_finance:['fraud','money laundering','wire','crypto','ransomware','scam','sanctions','mule','business email compromise'],
+  sanctions:['sanctions','ofac','designated','export control','vessel','evasion','russia','iran','north korea'],
+  supply_chain:['supply chain','port','shipping','vendor','semiconductor','canal','disruption','logistics'],
+  geo_conflict:['military','conflict','sanctions','border','missile','war','mobilization','gps'],
+  aviation_maritime:['aircraft','aviation','port','shipping','ais','vessel','maritime','gnss','gps'],
+  disasters:['earthquake','wildfire','flood','storm','cyclone','heat','volcano','disaster'],
+  satellite_imagery:['satellite','imagery','wildfire','flood','smoke','port','airfield','thermal'],
+  insider_ai:['insider','ai','model','data leak','credential','secret','supply chain','exfiltration']
+};
+
 function switchTab(t) {
   CURRENT_TAB = t;
   document.querySelectorAll('.dossier-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
@@ -564,7 +576,8 @@ async function openPage(id, push=true) {
   renderPageTabs(id);
   setPageLayers(id);
   if (id === 'global') {
-    if (!GLOBAL) GLOBAL = await fetch('/monitor/global?live=false').then(r=>r.json());
+    GLOBAL = await fetch('/monitor/global?live=true').then(r=>r.json());
+    renderGlobalMetrics(GLOBAL.metrics || []);
     CURRENT_DATA = { _kind:'global', ...GLOBAL };
     renderMapMarkers(null, globalExtraMarkers());
     flyToPage(id);
@@ -588,7 +601,7 @@ async function bootstrap() {
     fetch('/exposure').then(r=>r.json()),
     fetch('/sanctions/summary').then(r=>r.json()),
     fetch('/mission/summary').then(r=>r.json()),
-    fetch('/monitor/global?live=false').then(r=>r.json()),
+    fetch('/monitor/global?live=true').then(r=>r.json()),
   ]);
   MISSION = mission;
   GLOBAL = global;
@@ -940,7 +953,8 @@ async function loadView(kind) {
 async function loadMission(moduleId, push=true) {
   CURRENT_PAGE = moduleId;
   if (push) syncHash(moduleId);
-  if (!GLOBAL) GLOBAL = await fetch('/monitor/global?live=false').then(r=>r.json());
+  GLOBAL = await fetch('/monitor/global?live=true').then(r=>r.json());
+  renderGlobalMetrics(GLOBAL.metrics || []);
   const j = await fetch('/mission/module/'+encodeURIComponent(moduleId)).then(r=>r.json());
   CURRENT_DATA = { _kind:'mission', ...j };
   renderMapMarkers(moduleId, moduleExtraMarkers(moduleId));
@@ -1045,6 +1059,64 @@ function metricCards(metrics) {
 
 function sourcePills(sources) {
   return (sources||[]).map(s => `<span class="badge" title="${escapeHtml(s.agency||'')} · ${escapeHtml(s.access||'')}">${escapeHtml(s.name||s)}</span>`).join(' ');
+}
+
+function expansionPanel(expansion) {
+  if (!expansion || !Object.keys(expansion).length) return '';
+  const subdomains = (expansion.subdomains||[]).map(x => `<span class="ttp">${escapeHtml(x)}</span>`).join('');
+  const checks = (expansion.minute_checks||[]).map(row => `
+    <div class="intel-row">
+      <div class="k">${escapeHtml(row.check)}</div>
+      <div><strong>${escapeHtml(row.fields)}</strong><div class="desc">${escapeHtml(row.decision)}</div></div>
+    </div>`).join('');
+  const rubric = (expansion.score_rubric||[]).map(x => `<div class="small">▸ ${escapeHtml(x)}</div>`).join('');
+  const outputs = (expansion.operator_outputs||[]).map(x => `<div class="small">▸ ${escapeHtml(x)}</div>`).join('');
+  return `
+    <h3>DOMAIN PROBLEMS COVERED · MINUTE DETAIL</h3>
+    <div class="card">${subdomains}</div>
+    <h3>FIELD-LEVEL CHECKS / WHAT CHANGES THE DECISION</h3>
+    <div class="intel-table">${checks}</div>
+    <h3>SCORING RUBRIC + OPERATOR OUTPUTS</h3>
+    <div class="card"><div class="reason"><strong>Why scores move:</strong><br>${rubric}</div><div class="reason"><strong>Outputs:</strong><br>${outputs}</div></div>
+  `;
+}
+
+function moduleLivePanel(moduleId) {
+  const live = ((GLOBAL||{}).live)||{};
+  const signals = live.signals || {};
+  const keys = MODULE_LIVE_KEYWORDS[moduleId] || [];
+  const articles = ((signals.gdelt_articles||{}).items || []).filter(a => {
+    const blob = `${a.title||''} ${a.domain||''} ${a.sourceCountry||''}`.toLowerCase();
+    return !keys.length || keys.some(k => blob.includes(k));
+  }).slice(0,8);
+  const events = (live.map_events || []).filter(e => {
+    if (['disasters','satellite_imagery','supply_chain','geo_conflict'].includes(moduleId)) return true;
+    return moduleId === 'aviation_maritime' ? ['GDACS Alert','Weather Alert'].includes(e.kind) : false;
+  }).slice(0,6);
+  const aircraft = (((signals.opensky_aircraft||{}).items)||[]).slice(0,6);
+  const articleHtml = articles.map(a => `
+    <div class="card">
+      <div class="title"><strong>${escapeHtml(a.title || 'Live article')}</strong><span class="country">${escapeHtml(a.sourceCountry||a.domain||'GDELT')}</span></div>
+      <div class="small">${escapeHtml(a.domain||'')} · ${escapeHtml(a.seendate||'last 24h')}</div>
+    </div>`).join('');
+  const eventHtml = events.map(e => `
+    <div class="card" onclick="renderEventDrilldown(${JSON.stringify({ _kind:'event', ...e }).replace(/"/g, '&quot;')})">
+      <div class="title"><strong>${escapeHtml(e.name)}</strong><span class="country">${escapeHtml(e.source)}</span></div>
+      <div class="desc">${escapeHtml(e.kind)} · ${escapeHtml(e.severity||'')}</div>
+      <div class="small">${escapeHtml(e.lat)}, ${escapeHtml(e.lng)} · ${escapeHtml(e.time||'')}</div>
+    </div>`).join('');
+  const aircraftHtml = moduleId === 'aviation_maritime' ? aircraft.map(a => `
+    <div class="card" onclick="focusMapDatum(${JSON.stringify({ ...a, name:a.callsign || a.icao24, marker_kind:'aircraft', score:62, source:'OpenSky' }).replace(/"/g, '&quot;')}, 'aviation_maritime', true)">
+      <div class="title"><strong>${escapeHtml(a.callsign || a.icao24)}</strong><span class="country">${escapeHtml(a.origin_country||'OpenSky')}</span></div>
+      <div class="desc">alt ${escapeHtml(a.altitude_m)}m · velocity ${escapeHtml(a.velocity_mps)}m/s</div>
+    </div>`).join('') : '';
+  return `
+    <h3>LIVE PUBLIC INTEL · LAST 24H / ACTIVE FEEDS</h3>
+    <div class="reason"><strong>Live feed status:</strong> GDELT ${escapeHtml((signals.gdelt_articles||{}).status || 'pending')} · NASA ${escapeHtml((signals.nasa_eonet||{}).status || 'pending')} · USGS ${escapeHtml((signals.usgs_earthquakes||{}).status || 'pending')} · NOAA ${escapeHtml((signals.noaa_alerts||{}).status || 'pending')} · OpenSky ${escapeHtml((signals.opensky_aircraft||{}).status || 'pending')}</div>
+    ${articleHtml || '<div class="hint">No matching live GDELT articles in this refresh window; public feeds may be quiet or rate-limited.</div>'}
+    ${eventHtml}
+    ${aircraftHtml}
+  `;
 }
 
 function decisionCard(d) {
@@ -1325,6 +1397,7 @@ function renderDeepDive(d) {
 
 function renderMission(d) {
   const detail = d.detail || {};
+  const expansion = d.page_expansion || {};
   const hotspots = (d.hotspots||[]).map(h => `
     <div class="card" onclick="loadHotspot('${h.id}')">
       <div class="title"><strong>${escapeHtml(h.name)}</strong><span class="risk risk-${h.severity}">${h.severity}</span></div>
@@ -1374,6 +1447,8 @@ function renderMission(d) {
     <div class="desc">${escapeHtml(d.problem)}</div>
     ${metricCards(d.metrics)}
     ${missionDecisions ? `<h3>DECISION SCORES FOR THIS PAGE</h3>${missionDecisions}` : ''}
+    ${moduleLivePanel(d.id)}
+    ${expansionPanel(expansion)}
     <h3>TRUSTED SOURCES</h3>
     <div>${sourcePills(d.sources_detail)}</div>
     <h3>ONE-CLICK ACTIONS</h3>

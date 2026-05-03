@@ -156,10 +156,14 @@ def live_public_signals() -> dict[str, Any]:
     gdelt = _get_json(
         "https://api.gdeltproject.org/api/v2/doc/doc",
         {
-            "query": '(military OR cyberattack OR sanctions OR "port disruption" OR "supply chain")',
+            "query": (
+                '(military OR cyberattack OR sanctions OR "port disruption" OR "supply chain" '
+                'OR fraud OR "money laundering" OR "wire fraud" OR "business email compromise" '
+                'OR ransomware OR "crypto scam" OR "trade based money laundering" OR "AIS" OR "satellite imagery")'
+            ),
             "mode": "ArtList",
             "format": "json",
-            "maxrecords": 20,
+            "maxrecords": 50,
             "timespan": "24h",
         },
     )

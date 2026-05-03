@@ -288,6 +288,7 @@ async def mission_module_endpoint(module_id: str):
     res = mission_module(module_id, INTEL, SANCTIONS, EXPOSURE)
     if not res:
         return JSONResponse({"error": "unknown mission module"}, status_code=404)
+    res["page_expansion"] = PAGE_EXPANSIONS.get(module_id, {})
     return res
 
 
@@ -487,16 +488,6 @@ async def inject(kind: str):
 
 @app.get("/{path:path}")
 async def spa_fallback(path: str):
-    clean = path.strip("/")
-    if clean in SLUG_MODULES:
-        html = _module_page_html(SLUG_MODULES[clean])
-        if html:
-            return HTMLResponse(html)
-    if clean.startswith("module/"):
-        module_id = clean.split("/", 1)[1]
-        html = _module_page_html(module_id)
-        if html:
-            return HTMLResponse(html)
     if "." in path:
         return JSONResponse({"error": "not found"}, status_code=404)
     return FileResponse(UI / "index.html")
