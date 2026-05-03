@@ -25,7 +25,7 @@ from core.exposure  import ExposureIndex
 from core.live      import scan as live_scan, nvd_recent, classify
 from core.chat      import Chat
 from core.mission   import mission_summary, mission_module, mission_hotspot
-from core.monitor   import global_monitor, satellite_monitor, geo_dossier
+from core.monitor   import global_monitor, satellite_monitor, geo_dossier, imagery_analysis
 from core.loaders import (
     load_nsl_kdd, load_ctu13, load_threatfox_recent,
     load_cicids, load_cert,
@@ -290,6 +290,10 @@ def monitor_satellite_endpoint():
 @app.get("/monitor/geo")
 def monitor_geo_endpoint(lat: float, lng: float):
     return geo_dossier(lat, lng, INTEL, SANCTIONS, EXPOSURE)
+
+@app.get("/monitor/imagery/analyze")
+def monitor_imagery_analyze_endpoint(lat: float, lng: float):
+    return imagery_analysis(lat, lng, INTEL, SANCTIONS, EXPOSURE)
 
 @app.post("/inject/{kind}")
 async def inject(kind: str):

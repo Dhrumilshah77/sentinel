@@ -5,9 +5,9 @@ hotspots, and drilldowns without dragging in an entire second codebase.
 """
 from __future__ import annotations
 
-import json
 import math
-from datetime import datetime
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
 from typing import Any
 
 import requests
@@ -33,6 +33,33 @@ SATELLITE_LAYERS: list[dict[str, Any]] = [
         "use": "Wildfire and heat-source detection for infrastructure risk.",
         "url": "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi",
         "layer": "MODIS_Terra_Thermal_Anomalies_All",
+    },
+    {
+        "id": "viirs_fire",
+        "name": "VIIRS Active Fire",
+        "provider": "NASA FIRMS/GIBS",
+        "cadence": "Near real-time",
+        "use": "Thermal hotspot cueing for fires, explosions, industrial heat, and smoke-response triage.",
+        "url": "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi",
+        "layer": "VIIRS_SNPP_Thermal_Anomalies_375m_All",
+    },
+    {
+        "id": "omi_aerosol",
+        "name": "Aerosol / Smoke Index",
+        "provider": "NASA GIBS",
+        "cadence": "Daily",
+        "use": "Smoke, dust, and atmospheric-obscuration context for ISR and logistics planning.",
+        "url": "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi",
+        "layer": "OMI_Aerosol_Index",
+    },
+    {
+        "id": "imerg_precip",
+        "name": "IMERG Precipitation",
+        "provider": "NASA GPM/GIBS",
+        "cadence": "Half-hourly to daily",
+        "use": "Flood and mobility degradation cueing around routes, ports, and forward logistics.",
+        "url": "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi",
+        "layer": "IMERG_Precipitation_Rate",
     },
     {
         "id": "landsatlook",
@@ -86,6 +113,16 @@ def _get_json(url: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         return {"_error": str(e)[:180], "_url": url}
 
 
+def _get_text(url: str, params: dict[str, Any] | None = None) -> str:
+    try:
+        r = requests.get(url, headers=UA, params=params, timeout=T)
+        if not r.ok:
+            return ""
+        return r.text
+    except Exception:
+        return ""
+
+
 def _point_from_geo(geo: dict[str, Any] | None) -> tuple[float | None, float | None]:
     if not geo:
         return None, None
@@ -116,6 +153,18 @@ def live_public_signals() -> dict[str, Any]:
         "https://opensky-network.org/api/states/all",
         {"lamin": 24.0, "lomin": -125.0, "lamax": 50.0, "lomax": -66.0},
     )
+    gdelt = _get_json(
+        "https://api.gdeltproject.org/api/v2/doc/doc",
+        {
+            "query": '(military OR cyberattack OR sanctions OR "port disruption" OR "supply chain")',
+            "mode": "ArtList",
+            "format": "json",
+            "maxrecords": 20,
+            "timespan": "24h",
+        },
+    )
+    gdacs_xml = _get_text("https://www.gdacs.org/xml/rss.xml")
+    swpc = _get_json("https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json")
 
     disaster_events: list[dict[str, Any]] = []
     for ev in (eonet.get("events") or [])[:20]:
@@ -178,13 +227,68 @@ def live_public_signals() -> dict[str, Any]:
             "velocity_mps": row[9] if len(row) > 9 else None,
         })
 
-    all_events = [e for e in disaster_events + quake_events + weather_alerts if e.get("lat") is not None and e.get("lng") is not None]
+    gdacs_events: list[dict[str, Any]] = []
+    if gdacs_xml:
+        try:
+            root = ET.fromstring(gdacs_xml)
+            ns = {"geo": "http://www.w3.org/2003/01/geo/wgs84_pos#"}
+            for item in root.findall(".//item")[:20]:
+                title = (item.findtext("title") or "GDACS Alert").strip()
+                lat_s = item.findtext("geo:lat", namespaces=ns)
+                lng_s = item.findtext("geo:long", namespaces=ns)
+                try:
+                    lat = float(lat_s) if lat_s else None
+                    lng = float(lng_s) if lng_s else None
+                except ValueError:
+                    lat, lng = None, None
+                sev = "HIGH" if any(x in title.lower() for x in ("red", "orange", "earthquake", "cyclone")) else "MEDIUM"
+                gdacs_events.append({
+                    "id": item.findtext("guid") or title,
+                    "name": title,
+                    "kind": "GDACS Alert",
+                    "source": "GDACS",
+                    "lat": lat,
+                    "lng": lng,
+                    "severity": sev,
+                    "time": item.findtext("pubDate"),
+                    "link": item.findtext("link"),
+                })
+        except Exception:
+            gdacs_events = []
+
+    gdelt_items: list[dict[str, Any]] = []
+    for a in (gdelt.get("articles") or [])[:20]:
+        gdelt_items.append({
+            "title": a.get("title"),
+            "sourceCountry": a.get("sourceCountry"),
+            "domain": a.get("domain"),
+            "url": a.get("url"),
+            "seendate": a.get("seendate"),
+            "tone": a.get("tone"),
+        })
+
+    space_weather: dict[str, Any] = {"status": _status(swpc), "kp_latest": None, "items": []}
+    if isinstance(swpc, list) and len(swpc) > 1:
+        rows = swpc[1:]
+        space_weather["items"] = rows[-8:]
+        try:
+            space_weather["kp_latest"] = float(rows[-1][1])
+        except Exception:
+            space_weather["kp_latest"] = None
+
+    all_events = [
+        e for e in disaster_events + quake_events + weather_alerts + gdacs_events
+        if e.get("lat") is not None and e.get("lng") is not None
+    ]
     return {
         "signals": {
             "nasa_eonet": {"count": len(disaster_events), "items": disaster_events, "status": _status(eonet)},
             "usgs_earthquakes": {"count": len(quake_events), "items": quake_events, "status": _status(quakes)},
             "noaa_alerts": {"count": len(weather_alerts), "items": weather_alerts, "status": _status(noaa)},
             "opensky_aircraft": {"count": len(aircraft), "items": aircraft[:30], "status": _status(opensky)},
+            "gdacs_alerts": {"count": len(gdacs_events), "items": gdacs_events, "status": "ok" if gdacs_xml else "error"},
+            "gdelt_articles": {"count": len(gdelt_items), "items": gdelt_items, "status": _status(gdelt)},
+            "noaa_space_weather": space_weather,
         },
         "map_events": all_events[:45],
         "fetched_at": datetime.utcnow().isoformat() + "Z",
@@ -234,6 +338,12 @@ def _decision(
     lng: float | None = None,
     domain: str = "global",
 ) -> dict[str, Any]:
+    reason = (
+        f"Score {max(0, min(100, int(score)))} combines mission impact "
+        f"({impact}), urgency ({urgency}), actionability ({actionability}), "
+        f"and confidence ({confidence}). Evidence: "
+        + "; ".join(evidence[:3])
+    )
     return {
         "title": title,
         "score": max(0, min(100, int(score))),
@@ -248,6 +358,7 @@ def _decision(
         "owner": owner,
         "time_to_action": time_to_action,
         "evidence": evidence,
+        "score_reason": reason,
         "sources": sources,
         "domain": domain,
         "lat": lat,
@@ -383,6 +494,8 @@ def global_monitor(intel: Any, sanctions: Any, exposure: Any, include_live: bool
         {"label": "USGS M4.5+ Quakes", "value": live["signals"].get("usgs_earthquakes", {}).get("count", "live"), "tone": "warn", "source": "USGS"},
         {"label": "US Weather Alerts", "value": live["signals"].get("noaa_alerts", {}).get("count", "live"), "tone": "ok", "source": "NOAA"},
         {"label": "Air Tracks", "value": live["signals"].get("opensky_aircraft", {}).get("count", "live"), "tone": "ok", "source": "OpenSky"},
+        {"label": "GDACS Alerts", "value": live["signals"].get("gdacs_alerts", {}).get("count", "live"), "tone": "warn", "source": "GDACS"},
+        {"label": "GDELT Intel", "value": live["signals"].get("gdelt_articles", {}).get("count", "live"), "tone": "gold", "source": "GDELT 2.1"},
     ]
 
     convergence = []
@@ -404,6 +517,8 @@ def global_monitor(intel: Any, sanctions: Any, exposure: Any, include_live: bool
             {"label": "Country Risk Index", "value": len(intel_summary["apt_by_country"]), "tone": "bad", "source": "MITRE attribution + OFAC"},
             {"label": "Trusted Source Families", "value": 9, "tone": "ok", "source": "Military-grade public datasets"},
             {"label": "Source Health", "value": "LIVE", "tone": "ok", "source": "No-auth public APIs + cached feeds"},
+            {"label": "Imagery Layers", "value": len(SATELLITE_LAYERS), "tone": "ok", "source": "NASA/USGS/Copernicus"},
+            {"label": "Live News Intel", "value": live["signals"].get("gdelt_articles", {}).get("count", "live"), "tone": "gold", "source": "GDELT"},
         ],
         "convergence": sorted(convergence, key=lambda x: -x["score"]),
         "live": live,
@@ -436,6 +551,8 @@ def satellite_monitor() -> dict[str, Any]:
             {"label": "NASA Events", "value": live["signals"].get("nasa_eonet", {}).get("count", 0), "tone": "warn"},
             {"label": "USGS Quakes", "value": live["signals"].get("usgs_earthquakes", {}).get("count", 0), "tone": "warn"},
             {"label": "NOAA Alerts", "value": live["signals"].get("noaa_alerts", {}).get("count", 0), "tone": "ok"},
+            {"label": "GDACS Alerts", "value": live["signals"].get("gdacs_alerts", {}).get("count", 0), "tone": "warn"},
+            {"label": "GDELT Intel", "value": live["signals"].get("gdelt_articles", {}).get("count", 0), "tone": "gold"},
         ],
         "sources_detail": [
             {"name": "NASA EONET", "agency": "NASA", "domain": "Open earth observation events", "access": "No-auth API"},
@@ -444,6 +561,8 @@ def satellite_monitor() -> dict[str, Any]:
             {"name": "LandsatLook", "agency": "USGS", "domain": "Open satellite imagery", "access": "Public viewer"},
             {"name": "Copernicus Browser", "agency": "EU Copernicus", "domain": "Sentinel imagery", "access": "Public viewer"},
             {"name": "NOAA/NWS Alerts", "agency": "NOAA", "domain": "Weather warning polygons", "access": "No-auth API"},
+            {"name": "GDACS", "agency": "UN/EU", "domain": "Global disaster alerts", "access": "Public RSS"},
+            {"name": "GDELT 2.1", "agency": "GDELT Project", "domain": "Global media/event awareness", "access": "No-auth API"},
         ],
         "actions": [
             "Open NASA/USGS event geometry on the globe.",
@@ -453,6 +572,7 @@ def satellite_monitor() -> dict[str, Any]:
         ],
         "layers": SATELLITE_LAYERS,
         "events": imagery_events,
+        "gdelt_articles": live["signals"].get("gdelt_articles", {}).get("items", []),
         "imagery_decisions": [
             _decision(
                 title=f"Review imagery for {e.get('name')}",
@@ -476,6 +596,112 @@ def satellite_monitor() -> dict[str, Any]:
             )
             for e in imagery_events[:6]
         ],
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+
+def _imagery_preview_url(lat: float, lng: float, layer: str = "VIIRS_SNPP_CorrectedReflectance_TrueColor") -> str:
+    delta = 1.8
+    bbox = f"{lng-delta:.4f},{lat-delta:.4f},{lng+delta:.4f},{lat+delta:.4f}"
+    day = (datetime.utcnow() - timedelta(days=1)).date().isoformat()
+    return (
+        "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi"
+        "?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1"
+        f"&LAYERS={layer}&STYLES=&FORMAT=image/jpeg&TRANSPARENT=false"
+        f"&SRS=EPSG:4326&WIDTH=640&HEIGHT=420&BBOX={bbox}&TIME={day}"
+    )
+
+
+def _nearby_live_events(lat: float, lng: float, live: dict[str, Any], max_km: int = 750) -> list[dict[str, Any]]:
+    events = []
+    for e in live.get("map_events") or []:
+        try:
+            dist = _distance_km(lat, lng, float(e["lat"]), float(e["lng"]))
+        except Exception:
+            continue
+        if dist <= max_km:
+            events.append({**e, "distance_km": round(dist, 1)})
+    return sorted(events, key=lambda x: x["distance_km"])[:8]
+
+
+def imagery_analysis(lat: float, lng: float, intel: Any, sanctions: Any, exposure: Any) -> dict[str, Any]:
+    """Open-source imagery triage for a clicked point.
+
+    This does not claim classified object recognition. It gives a defensible
+    public-data score using imagery availability, live event proximity,
+    strategic-location proximity, and military/logistics relevance.
+    """
+    live = live_public_signals()
+    geo = geo_dossier(lat, lng, intel, sanctions, exposure)
+    nearby_events = _nearby_live_events(lat, lng, live)
+    nearest_hotspot = (geo.get("nearest_hotspots") or [{}])[0]
+    nearest_asset = (geo.get("nearest_assets") or [{}])[0]
+    event_score = min(30, len(nearby_events) * 8)
+    hotspot_score = 30 if nearest_hotspot.get("distance_km", 9999) < 250 else 20 if nearest_hotspot.get("distance_km", 9999) < 750 else 8
+    asset_score = 20 if nearest_asset.get("distance_km", 9999) < 150 else 12 if nearest_asset.get("distance_km", 9999) < 500 else 4
+    imagery_score = 18 if SATELLITE_LAYERS else 0
+    score = min(98, 25 + event_score + hotspot_score + asset_score + imagery_score)
+
+    indicators = [
+        {
+            "name": "Thermal anomaly / fire cue",
+            "score": min(95, 35 + event_score + (10 if any("fire" in str(e.get("kind", "")).lower() for e in nearby_events) else 0)),
+            "why": "Uses NASA EONET/GIBS thermal layers as a public cue for heat, fire, smoke, or industrial disruption.",
+            "layer": "VIIRS_SNPP_Thermal_Anomalies_375m_All",
+        },
+        {
+            "name": "Mobility / flood degradation cue",
+            "score": min(90, 30 + (15 if any(x in str(e.get("kind", "")).lower() for e in nearby_events for x in ("flood", "storm", "precip")) else 0) + hotspot_score),
+            "why": "Uses precipitation, storms, and route/chokepoint proximity to estimate logistics degradation.",
+            "layer": "IMERG_Precipitation_Rate",
+        },
+        {
+            "name": "Strategic activity relevance",
+            "score": min(96, 30 + hotspot_score + asset_score),
+            "why": "High when the clicked area is close to public strategic hotspots, chokepoints, command assets, ports, or conflict zones.",
+            "layer": "VIIRS_SNPP_CorrectedReflectance_TrueColor",
+        },
+        {
+            "name": "Military-relevance likelihood",
+            "score": min(95, 25 + hotspot_score + asset_score + (8 if nearest_hotspot.get("severity") == "CRITICAL" else 0)),
+            "why": "This is not a classified detection. It is an OSINT triage score based on proximity to known strategic locations and live public events.",
+            "layer": "VIIRS_SNPP_CorrectedReflectance_TrueColor",
+        },
+    ]
+    decision = _decision(
+        title=f"Imagery triage {lat:.2f}, {lng:.2f}",
+        score=score,
+        confidence=76 if nearby_events else 64,
+        impact=min(95, 48 + hotspot_score + asset_score),
+        urgency=min(94, 45 + event_score + hotspot_score),
+        actionability=82,
+        action="Open the NASA imagery preview, compare true-color and thermal/precipitation layers, then pivot to the nearest hotspot or mission asset before commander brief.",
+        owner="Geospatial / Fusion Cell",
+        evidence=[
+            f"{len(nearby_events)} live public geo events within 750 km",
+            f"Nearest hotspot: {nearest_hotspot.get('name', 'none')} ({nearest_hotspot.get('distance_km', 'n/a')} km)",
+            f"Nearest mission asset: {nearest_asset.get('name', 'none')} ({nearest_asset.get('distance_km', 'n/a')} km)",
+        ],
+        sources=["NASA GIBS", "NASA EONET", "USGS", "NOAA/NWS", "GDACS", "GDELT"],
+        time_to_action="Immediate imagery review",
+        lat=lat,
+        lng=lng,
+        domain="satellite_imagery",
+    )
+    return {
+        "coordinate": {"lat": lat, "lng": lng},
+        "decision": decision,
+        "preview_url": _imagery_preview_url(lat, lng),
+        "alternate_previews": [
+            {"name": l["name"], "provider": l["provider"], "use": l["use"], "preview_url": _imagery_preview_url(lat, lng, l["layer"])}
+            for l in SATELLITE_LAYERS
+            if l["provider"].startswith("NASA")
+        ][:5],
+        "indicators": indicators,
+        "nearby_events": nearby_events,
+        "nearest_hotspots": geo.get("nearest_hotspots", []),
+        "nearest_assets": geo.get("nearest_assets", []),
+        "caveat": "OSINT imagery triage only: public satellite layers and live event feeds can cue human review, but they do not prove military activity by themselves.",
         "updated_at": datetime.utcnow().isoformat() + "Z",
     }
 

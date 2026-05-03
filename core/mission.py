@@ -40,6 +40,7 @@ TRUSTED_SOURCES: list[dict[str, str]] = [
     {"name": "NASA GIBS", "agency": "NASA", "domain": "Satellite imagery", "access": "Public WMTS"},
     {"name": "USGS LandsatLook", "agency": "USGS", "domain": "Satellite imagery", "access": "Public viewer"},
     {"name": "Copernicus Sentinel", "agency": "EU Copernicus", "domain": "Satellite imagery", "access": "Public browser"},
+    {"name": "NOAA SWPC", "agency": "NOAA", "domain": "Space weather", "access": "Free public JSON"},
 ]
 
 MISSION_MODULES: list[dict[str, Any]] = [
@@ -148,10 +149,11 @@ MISSION_MODULES: list[dict[str, Any]] = [
         "label": "Satellite & Imagery",
         "short": "Public orbital imagery and geospatial event feeds for visual situational awareness.",
         "problem": "Cyber, logistics, and national-security decisions need visual context for disasters, ports, airfields, routes, and infrastructure.",
-        "sources": ["NASA EONET", "NASA GIBS", "USGS Earthquake Hazards", "USGS LandsatLook", "Copernicus Sentinel", "NOAA/NWS Alerts"],
+        "sources": ["NASA EONET", "NASA GIBS", "USGS Earthquake Hazards", "USGS LandsatLook", "Copernicus Sentinel", "NOAA/NWS Alerts", "GDACS", "GDELT 2.1", "NOAA SWPC"],
         "actions": [
             "Use NASA EONET and USGS event geometry as globe overlays.",
             "Open NASA GIBS, LandsatLook, or Copernicus imagery for visual confirmation.",
+            "Run OSINT imagery triage on any clicked coordinate for thermal, weather, mobility, and military-relevance cues.",
             "Correlate satellite-visible events with cyber exposure and logistics risk.",
             "Keep imagery as decision support; do not automate irreversible actions.",
         ],
@@ -226,10 +228,10 @@ def _module_metrics(module_id: str, intel: Any, sanctions: Any, exposure: Any) -
         ]
     if module_id == "satellite_imagery":
         return [
-            {"label": "Imagery Sources", "value": 4, "tone": "ok"},
-            {"label": "Event Feeds", "value": 3, "tone": "warn"},
+            {"label": "Imagery Sources", "value": 6, "tone": "ok"},
+            {"label": "Event Feeds", "value": 6, "tone": "warn"},
             {"label": "Open Access", "value": "YES", "tone": "gold"},
-            {"label": "Map Layers", "value": "LIVE", "tone": "ok"},
+            {"label": "OSINT CV Cues", "value": 4, "tone": "ok"},
         ]
     return [
         {"label": "Trusted Sources", "value": len(TRUSTED_SOURCES), "tone": "ok"},
@@ -237,6 +239,53 @@ def _module_metrics(module_id: str, intel: Any, sanctions: Any, exposure: Any) -
         {"label": "Signals", "value": "Multi", "tone": "gold"},
         {"label": "Action Mode", "value": "BLUF", "tone": "ok"},
     ]
+
+
+def _module_decision(module_id: str, module: dict[str, Any], intel: Any, sanctions: Any, exposure: Any) -> dict[str, Any]:
+    metrics = _module_metrics(module_id, intel, sanctions, exposure)
+    hotspots = [h for h in HOTSPOTS if h["module"] == module_id]
+    severe = sum(1 for h in hotspots if h["severity"] in ("HIGH", "CRITICAL"))
+    source_count = len(module["sources"])
+    base = {
+        "cyber_defense": 92,
+        "aml_finance": 88,
+        "sanctions": 84,
+        "supply_chain": 86,
+        "geo_conflict": 89,
+        "aviation_maritime": 82,
+        "disasters": 78,
+        "satellite_imagery": 87,
+        "insider_ai": 80,
+    }.get(module_id, 70)
+    score = min(98, base + min(6, severe * 2) + min(4, source_count // 3))
+    band = "ACT NOW" if score >= 90 else "PRIORITIZE" if score >= 75 else "WATCH" if score >= 55 else "MONITOR"
+    evidence = [
+        f"{source_count} trusted public sources wired into this module",
+        f"{len(hotspots)} map hotspots, {severe} high/critical",
+        f"Top metric: {metrics[0]['label']} = {metrics[0]['value']}",
+    ]
+    return {
+        "title": f"{module['label']} decision score",
+        "score": score,
+        "band": band,
+        "confidence": 78 + min(15, source_count),
+        "components": {
+            "mission_impact": min(98, base + severe),
+            "urgency": min(96, 62 + severe * 7),
+            "actionability": min(95, 70 + source_count),
+        },
+        "recommended_action": module["actions"][0],
+        "owner": "Fusion Cell / Watch Officer",
+        "time_to_action": "Immediate triage",
+        "evidence": evidence,
+        "score_reason": (
+            f"Score {score} is based on module baseline risk ({base}), "
+            f"{severe} high/critical hotspots, {source_count} trusted sources, "
+            f"and the leading metric {metrics[0]['label']}={metrics[0]['value']}."
+        ),
+        "sources": module["sources"][:6],
+        "domain": module_id,
+    }
 
 
 def _module_payload(module: dict[str, Any], intel: Any, sanctions: Any, exposure: Any) -> dict[str, Any]:
@@ -261,6 +310,7 @@ def _module_payload(module: dict[str, Any], intel: Any, sanctions: Any, exposure
     return {
         **module,
         "metrics": _module_metrics(module_id, intel, sanctions, exposure),
+        "decision": _module_decision(module_id, module, intel, sanctions, exposure),
         "sources_detail": _source_details(module["sources"]),
         "hotspots": hotspots,
         "detail": detail,

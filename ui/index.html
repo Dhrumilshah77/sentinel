@@ -35,6 +35,9 @@
     padding:6px 8px; border-radius:4px; cursor:pointer; font:inherit; font-size:9.5px; letter-spacing:.8px;
     text-transform:uppercase; }
   .topnav button:hover, .topnav button.active { border-color:var(--accent); color:var(--accent); background:#101824; }
+  .dashboard-anchor { background:#0a0f15; color:var(--accent); border:1px solid var(--accent);
+    padding:7px 10px; border-radius:4px; cursor:pointer; font:inherit; font-size:10px; letter-spacing:1.4px;
+    text-transform:uppercase; }
   .pulse { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--ok);
     margin-right:6px; animation:pulse 1.4s infinite; }
   @keyframes pulse { 0% {opacity:1; transform:scale(1);} 50% {opacity:.4; transform:scale(1.5);} 100% {opacity:1; transform:scale(1);} }
@@ -54,7 +57,7 @@
   .commandbar button.purple{ background:var(--magenta); color:#1f0a26; }
 
   /* big buttons */
-  .actions { display:grid; grid-template-columns:repeat(8, 1fr); gap:1px; background:var(--line);
+  .actions { display:grid; grid-template-columns:repeat(auto-fit, minmax(105px, 1fr)); gap:1px; background:var(--line);
     border-bottom:1px solid var(--line); }
   .actions button { background:#0a0f15; color:var(--fg); border:none; cursor:pointer;
     min-width:0; padding:10px 6px; font:inherit; font-size:10px; letter-spacing:1.2px; font-weight:700;
@@ -74,7 +77,7 @@
   .actions.global-metrics button .metric-source { display:block; color:var(--mute); font-size:8.5px;
     letter-spacing:.6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:none; }
 
-  .page-tabs { height:34px; display:flex; align-items:center; gap:6px; padding:5px 14px;
+  .page-tabs { display:none; height:0; align-items:center; gap:6px; padding:0 14px;
     border-bottom:1px solid var(--line); background:#06090d; overflow-x:auto; }
   .page-tabs button { flex-shrink:0; background:#0a0f15; border:1px solid var(--line); color:var(--mute);
     padding:5px 9px; border-radius:4px; cursor:pointer; font:inherit; font-size:10px; letter-spacing:1px;
@@ -83,7 +86,7 @@
 
   /* main grid */
   .main { display:grid; grid-template-columns: 1fr 480px; gap:0;
-    height: calc(100vh - 33px - 49px - 47px - 34px - 72px - 54px); }
+    height: calc(100vh - 33px - 49px - 47px - 72px - 54px); }
   /* classification + header + commandbar + actions + agencies */
 
   .globe-wrap { position:relative; background:#020306; overflow:hidden; }
@@ -231,10 +234,18 @@
   .map-marker.finance .label { color:var(--gold); }
   .map-marker.chokepoint .ring, .map-marker.supply .ring { border-color:var(--warn); box-shadow:0 0 10px rgba(245,158,11,.5); }
   .map-marker.chokepoint .label, .map-marker.supply .label { color:var(--warn); }
+  .map-marker.shipping .ring, .map-marker.maritime .ring { border-color:var(--warn); box-shadow:0 0 10px rgba(245,158,11,.5); }
+  .map-marker.shipping .label, .map-marker.maritime .label { color:var(--warn); }
+  .map-marker.conflict .ring, .map-marker.energy .ring { border-color:var(--crit); box-shadow:0 0 10px rgba(255,45,85,.55); }
+  .map-marker.conflict .label, .map-marker.energy .label { color:var(--crit); }
   .map-marker.disaster .ring { border-color:var(--magenta); box-shadow:0 0 10px rgba(212,121,255,.5); }
   .map-marker.disaster .label { color:var(--magenta); }
+  .map-marker.weather .ring { border-color:#8dd3ff; box-shadow:0 0 10px rgba(141,211,255,.5); }
+  .map-marker.weather .label { color:#8dd3ff; }
   .map-marker.satellite .ring { border-color:#7aff95; box-shadow:0 0 10px rgba(122,255,149,.5); }
   .map-marker.satellite .label { color:#7aff95; }
+  .map-marker.imagery_analysis .ring { border-color:#7aff95; box-shadow:0 0 14px rgba(122,255,149,.7); }
+  .map-marker.imagery_analysis .label { color:#7aff95; }
   .map-marker.earthquake .ring { border-color:#ff8a3c; box-shadow:0 0 10px rgba(255,138,60,.5); }
   .map-marker.earthquake .label { color:#ff8a3c; }
   .decision-card { border-left:3px solid var(--accent); }
@@ -242,6 +253,10 @@
   .component-bars { display:grid; gap:4px; margin-top:7px; }
   .bar { height:5px; background:#111923; border-radius:10px; overflow:hidden; }
   .bar span { display:block; height:100%; background:linear-gradient(90deg,var(--accent),var(--crit)); }
+  .imagery-preview { width:100%; aspect-ratio: 16/10; object-fit:cover; border:1px solid var(--line);
+    border-radius:4px; background:#020306; margin-top:8px; }
+  .reason { margin-top:7px; padding:7px 8px; background:#070b10; border:1px dashed #253244;
+    border-radius:4px; color:#9aa6b2; line-height:1.45; }
 </style>
 </head>
 <body>
@@ -253,6 +268,7 @@
     <div class="mark">S</div>
     <h1>SENTINEL <small>MULTI-AGENCY CYBER THREAT FUSION · NATSEC HACKATHON</small></h1>
   </div>
+  <button class="dashboard-anchor" onclick="openPage('global')">Dashboard</button>
   <nav class="topnav" id="topnav">
     <button class="active" data-page="global" onclick="openPage('global')">Global</button>
     <button data-page="cyber_defense" onclick="openPage('cyber_defense')">Cyber Security</button>
@@ -357,14 +373,19 @@ let CURRENT_MAP = { filterModule:null, extraMarkers:[] };
 const LAYERS = {
   cyber:'Cyber Arcs',
   strategic:'Strategic Hotspots',
+  conflict:'Conflict',
   disaster:'Disasters',
+  weather:'Weather',
+  quakes:'Quakes',
   satellite:'Satellite/Imagery',
   aviation:'Air Tracks',
   finance:'AML/Sanctions',
+  shipping:'Ports/Chokepoints',
+  space:'Space Weather',
   command:'Command Targets',
   labels:'Labels',
 };
-let ACTIVE_LAYERS = new Set(['cyber','strategic','disaster','satellite','finance','command']);
+let ACTIVE_LAYERS = new Set(['cyber','strategic','conflict','shipping','disaster','satellite','finance','command']);
 
 function fmtNum(n){ return (n||0).toLocaleString(); }
 function nowTick(){ $("now").textContent = new Date().toISOString().replace('T',' ').slice(0,19) + 'Z'; }
@@ -423,17 +444,19 @@ function toggleLayer(id) {
 }
 
 function setPageLayers(id) {
-  if (id === 'satellite_imagery') ACTIVE_LAYERS = new Set(['satellite','disaster','strategic','command']);
-  else if (id === 'aviation_maritime') ACTIVE_LAYERS = new Set(['aviation','strategic','command']);
-  else if (id === 'aml_finance' || id === 'sanctions') ACTIVE_LAYERS = new Set(['finance','strategic','cyber']);
-  else if (id === 'cyber_defense') ACTIVE_LAYERS = new Set(['cyber','strategic','command']);
-  else if (id === 'disasters') ACTIVE_LAYERS = new Set(['disaster','satellite','strategic','command']);
-  else ACTIVE_LAYERS = new Set(['cyber','strategic','disaster','satellite','finance','command']);
+  if (id === 'satellite_imagery') ACTIVE_LAYERS = new Set(['satellite','disaster','weather','quakes','strategic','command']);
+  else if (id === 'aviation_maritime') ACTIVE_LAYERS = new Set(['aviation','shipping','strategic','conflict','command']);
+  else if (id === 'aml_finance' || id === 'sanctions') ACTIVE_LAYERS = new Set(['finance','strategic','cyber','conflict']);
+  else if (id === 'cyber_defense') ACTIVE_LAYERS = new Set(['cyber','strategic','command','finance']);
+  else if (id === 'disasters') ACTIVE_LAYERS = new Set(['disaster','weather','quakes','satellite','strategic','command']);
+  else if (id === 'geo_conflict') ACTIVE_LAYERS = new Set(['conflict','cyber','strategic','finance','satellite']);
+  else if (id === 'supply_chain') ACTIVE_LAYERS = new Set(['shipping','disaster','weather','strategic','command']);
+  else ACTIVE_LAYERS = new Set(['cyber','strategic','conflict','shipping','disaster','satellite','finance','command']);
   renderLayerControls();
 }
 
 function renderGlobalMetrics(metrics) {
-  $("globalMetrics").innerHTML = (metrics||[]).slice(0,8).map(m => `
+  $("globalMetrics").innerHTML = (metrics||[]).slice(0,10).map(m => `
     <button class="${escapeHtml(m.tone||'')}">
       <span class="num">${escapeHtml(m.value)}</span>${escapeHtml(m.label)}
       <span class="metric-source">${escapeHtml(m.source||'trusted public feed')}</span>
@@ -465,6 +488,7 @@ async function openPage(id, push=true) {
     if (!GLOBAL) GLOBAL = await fetch('/monitor/global?live=false').then(r=>r.json());
     CURRENT_DATA = { _kind:'global', ...GLOBAL };
     renderMapMarkers(null, globalExtraMarkers());
+    flyToPage(id);
     switchTab('mission'); renderTab();
     return;
   }
@@ -472,6 +496,7 @@ async function openPage(id, push=true) {
     SATELLITE = await fetch('/monitor/satellite').then(r=>r.json());
     CURRENT_DATA = { _kind:'satellite', ...SATELLITE };
     renderMapMarkers('satellite_imagery', satelliteExtraMarkers());
+    flyToPage(id);
     switchTab('mission'); renderTab();
     return;
   }
@@ -615,11 +640,15 @@ function renderMapMarkers(filterModule=null, extraMarkers=[]) {
 
 function layerForMarker(d) {
   const k = String(d.marker_kind || d.kind || '').toLowerCase();
-  if (d._event || k.includes('wildfire') || k.includes('earthquake') || k.includes('disaster')) return 'disaster';
+  const src = String(d.source || '').toLowerCase();
+  if (k.includes('aircraft')) return 'aviation';
+  if (k.includes('earthquake') || src.includes('usgs')) return 'quakes';
+  if (k.includes('weather') || k.includes('storm') || src.includes('noaa/nws')) return 'weather';
+  if (k.includes('gdacs') || k.includes('wildfire') || k.includes('disaster')) return 'disaster';
   if (k.includes('satellite')) return 'satellite';
   if (k.includes('finance')) return 'finance';
-  if (k.includes('chokepoint') || k.includes('supply') || k.includes('conflict') || k.includes('energy') || k.includes('maritime')) return 'strategic';
-  if (k.includes('aircraft')) return 'aviation';
+  if (k.includes('chokepoint') || k.includes('supply') || k.includes('maritime') || k.includes('port')) return 'shipping';
+  if (k.includes('conflict') || k.includes('energy')) return 'conflict';
   if (k.includes('actor')) return 'cyber';
   return 'strategic';
 }
@@ -662,10 +691,22 @@ function updateGlobeLayers() {
        if (d.marker_kind === 'actor') return loadCountryGroups(d.country);
        if (d._page) return openPage(d._page);
        if (d._event) return renderEventDrilldown(d);
+       if (d.marker_kind === 'imagery_analysis') return analyzeImagery(d.lat, d.lng);
        return loadHotspot(d.id);
      };
      return div;
    });
+}
+
+function flyToPage(id) {
+  if (!G) return;
+  const h = ((MISSION||{}).hotspots||[]).find(x => id === 'global' ? x.severity === 'CRITICAL' : x.module === id);
+  const e = id === 'satellite_imagery' ? ((SATELLITE||{}).events||[])[0] : null;
+  const target = e || h;
+  if (target && target.lat != null && target.lng != null) {
+    stopGlobeRotation();
+    G.pointOfView({ lat:Number(target.lat), lng:Number(target.lng), altitude:1.35 }, 900);
+  }
 }
 
 function globalExtraMarkers() {
@@ -707,6 +748,39 @@ function satelliteExtraMarkers() {
   }));
 }
 
+function moduleExtraMarkers(moduleId) {
+  const live = (GLOBAL||{}).live || {};
+  const events = (live.map_events || []).map(e => ({
+    ...e,
+    id:e.id || e.name,
+    marker_kind: String(e.kind||'event').toLowerCase().includes('earthquake') ? 'earthquake' :
+      String(e.source||'').includes('NOAA') ? 'weather' : 'disaster',
+    label:String(e.name||e.kind||'EVENT').toUpperCase().slice(0,42),
+    score:e.severity === 'HIGH' ? 82 : 64,
+    _event:true,
+  }));
+  const aircraft = (((live.signals||{}).opensky_aircraft||{}).items || []).slice(0,20).map(a => ({
+    ...a,
+    id:a.icao24,
+    name:a.callsign || a.icao24,
+    marker_kind:'aircraft',
+    label:`${(a.callsign || a.icao24 || 'AIR').toUpperCase()} · ${a.origin_country || ''}`,
+    _event:true,
+    source:'OpenSky',
+    kind:'Aircraft',
+    severity:'LOW',
+  }));
+  const imageryCue = ((MISSION||{}).hotspots || [])
+    .filter(h => ['satellite_imagery','disasters','aviation_maritime','supply_chain'].includes(h.module))
+    .map(h => ({...h, marker_kind:'imagery_analysis', label:`IMAGERY · ${h.name.toUpperCase()}`, score:78}));
+  if (moduleId === 'disasters') return events;
+  if (moduleId === 'satellite_imagery') return [...events, ...imageryCue];
+  if (moduleId === 'aviation_maritime') return aircraft;
+  if (moduleId === 'supply_chain') return events.slice(0,12);
+  if (moduleId === 'geo_conflict') return events.filter(e => ['HIGH','CRITICAL','Severe','Extreme'].includes(e.severity)).slice(0,8);
+  return [];
+}
+
 async function loadCountryGroups(country) {
   const j = await fetch('/intel/map').then(r=>r.json());
   const m = j.markers.find(x => x.country === country);
@@ -728,10 +802,12 @@ async function loadView(kind) {
 async function loadMission(moduleId, push=true) {
   CURRENT_PAGE = moduleId;
   if (push) syncHash(moduleId);
+  if (!GLOBAL) GLOBAL = await fetch('/monitor/global?live=false').then(r=>r.json());
   const j = await fetch('/mission/module/'+encodeURIComponent(moduleId)).then(r=>r.json());
   CURRENT_DATA = { _kind:'mission', ...j };
-  renderMapMarkers(moduleId);
+  renderMapMarkers(moduleId, moduleExtraMarkers(moduleId));
   renderPageTabs(moduleId);
+  flyToPage(moduleId);
   switchTab('mission'); renderTab();
 }
 
@@ -790,6 +866,8 @@ function renderTab() {
     if (d._kind === 'global') return renderGlobal(d);
     if (d._kind === 'satellite') return renderSatellite(d);
     if (d._kind === 'event') return renderEventDrilldown(d);
+    if (d._kind === 'geo') return renderGeoDossier(d);
+    if (d._kind === 'imagery') return renderImageryAnalysis(d);
     if (d._kind === 'mission') return renderMission(d);
     if (d._kind === 'hotspot') return renderHotspot(d);
     $("body").innerHTML = `<div class="hint">Pick a mission button or click a globe hotspot.</div>`;
@@ -797,6 +875,12 @@ function renderTab() {
   }
   if (CURRENT_TAB === 'scan')     return renderScan();
   if (CURRENT_TAB === 'dossier') {
+    if (d._kind === 'global')     return renderGlobal(d);
+    if (d._kind === 'mission')    return renderMission(d);
+    if (d._kind === 'satellite')  return renderSatellite(d);
+    if (d._kind === 'geo')        return renderGeoDossier(d);
+    if (d._kind === 'imagery')    return renderImageryAnalysis(d);
+    if (d._kind === 'event')      return renderEventDrilldown(d);
     if (d._kind === 'group')      return renderGroup(d);
     if (d._kind === 'country')    return renderCountry(d);
     if (d._kind === 'threats' || d._kind === 'ransomware') return renderKev(d);
@@ -845,6 +929,7 @@ function decisionCard(d) {
       <div class="desc"><strong>COA:</strong> ${escapeHtml(d.recommended_action||'')}</div>
       <div class="small">owner: ${escapeHtml(d.owner||'')}</div>
       <div class="component-bars">${bars}</div>
+      <div class="reason"><strong>Why this score:</strong> ${escapeHtml(d.score_reason || 'Weighted from mission impact, urgency, actionability, confidence, and source evidence.')}</div>
       <div style="margin-top:7px">${evidence}</div>
       <div style="margin-top:7px">${sources}</div>
     </div>
@@ -908,10 +993,17 @@ function renderSatellite(d) {
       <div class="desc">${escapeHtml(e.kind)} · ${escapeHtml(e.severity || '')}</div>
       <div class="small">lat ${e.lat} · lng ${e.lng} · ${escapeHtml(e.time||'')}</div>
     </div>`).join('');
+  const gdelt = (d.gdelt_articles||[]).slice(0,6).map(a => `
+    <div class="small">▸ <strong>${escapeHtml(a.title)}</strong> · ${escapeHtml(a.domain||'GDELT')} · ${escapeHtml(a.sourceCountry||'')}</div>
+  `).join('');
   $("body").innerHTML = `
     <h3>SATELLITE & IMAGERY</h3>
     <div class="desc">${escapeHtml(d.problem)}</div>
     ${metricCards(d.metrics)}
+    <div class="card" onclick="analyzeImagery(24.0,121.0)">
+      <div class="title"><strong>Run Imagery Triage Demo</strong><span class="country">Taiwan Strait</span></div>
+      <div class="desc">Public NASA image preview + scoring for thermal, weather, mobility, and strategic activity cues.</div>
+    </div>
     <h3>IMAGERY DECISION CUES</h3>
     ${decisions || '<div class="hint">Imagery decision cues loading from live event geometry.</div>'}
     <h3>TRUSTED IMAGERY SOURCES</h3>
@@ -920,6 +1012,8 @@ function renderSatellite(d) {
     ${layers}
     <h3>LIVE GEO EVENTS FROM NASA / USGS / NOAA</h3>
     ${events || '<div class="hint">No live event geometry returned yet. Check venue Wi-Fi or refresh.</div>'}
+    <h3>GDELT INTEL WATCH</h3>
+    <div class="card">${gdelt || '<span class="hint">GDELT articles loading.</span>'}</div>
   `;
 }
 
@@ -942,6 +1036,7 @@ function renderEventDrilldown(e) {
     <div class="small">▸ Pivot to Satellite + Imagery for public imagery layers.</div>
     <div class="small">▸ Pivot to Supply Chain or Threat if the event overlaps a chokepoint or conflict area.</div>
     <h3>QUICK PIVOTS</h3>
+    <div class="card" onclick="analyzeImagery(${Number(event.lat)||0},${Number(event.lng)||0})"><div class="title"><strong>Run Imagery Triage Here</strong><span class="country">NASA GIBS</span></div><div class="desc">Pull public imagery preview and score thermal, weather, mobility, and strategic activity cues.</div></div>
     <div class="card" onclick="openPage('satellite_imagery')"><div class="title"><strong>Satellite + Imagery</strong><span class="country">NASA / USGS</span></div><div class="desc">Open public imagery sources and live geospatial feeds.</div></div>
     <div class="card" onclick="openPage('supply_chain')"><div class="title"><strong>Supply Chain</strong><span class="country">Cascades</span></div><div class="desc">Check vendor, port, and route exposure.</div></div>
   `;
@@ -949,14 +1044,30 @@ function renderEventDrilldown(e) {
 
 async function openGeoDossier(lat, lng) {
   try {
-    const d = await fetch(`/monitor/geo?lat=${encodeURIComponent(lat.toFixed(5))}&lng=${encodeURIComponent(lng.toFixed(5))}`).then(r=>r.json());
-    CURRENT_DATA = { _kind:'geo', ...d };
+    const latS = encodeURIComponent(lat.toFixed(5));
+    const lngS = encodeURIComponent(lng.toFixed(5));
+    const [d, img] = await Promise.all([
+      fetch(`/monitor/geo?lat=${latS}&lng=${lngS}`).then(r=>r.json()),
+      fetch(`/monitor/imagery/analyze?lat=${latS}&lng=${lngS}`).then(r=>r.json()),
+    ]);
+    CURRENT_DATA = { _kind:'geo', ...d, imagery:img };
     CURRENT_TAB = 'mission';
     document.querySelectorAll('.dossier-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'mission'));
     renderGeoDossier(CURRENT_DATA);
   } catch (e) {
     $("body").innerHTML = `<div class="hint">Coordinate dossier failed: ${escapeHtml(e.message||e)}</div>`;
   }
+}
+
+async function analyzeImagery(lat, lng) {
+  const latS = encodeURIComponent(Number(lat).toFixed(5));
+  const lngS = encodeURIComponent(Number(lng).toFixed(5));
+  $("body").innerHTML = `<div class="hint"><span class="pulse"></span> Pulling public imagery context and scoring OSINT activity cues for ${latS}, ${lngS}…</div>`;
+  const d = await fetch(`/monitor/imagery/analyze?lat=${latS}&lng=${lngS}`).then(r=>r.json());
+  CURRENT_DATA = { _kind:'imagery', ...d };
+  CURRENT_TAB = 'mission';
+  document.querySelectorAll('.dossier-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'mission'));
+  renderImageryAnalysis(CURRENT_DATA);
 }
 
 function renderGeoDossier(d) {
@@ -970,16 +1081,49 @@ function renderGeoDossier(d) {
     <div class="small">▸ <strong>${escapeHtml(a.name)}</strong> · ${escapeHtml(a.type)} · ${a.distance_km} km · criticality ${a.criticality}</div>
   `).join('');
   const imagery = (d.imagery_layers||[]).map(l => `<div class="small">▸ <strong>${escapeHtml(l.name)}</strong> · ${escapeHtml(l.provider)} · ${escapeHtml(l.use)}</div>`).join('');
+  const img = d.imagery;
   $("body").innerHTML = `
     <h3>COORDINATE DECISION DOSSIER</h3>
     <div class="desc">Clicked location: ${d.coordinate.lat}, ${d.coordinate.lng}</div>
     ${decisionCard(d.decision)}
+    ${img ? `<h3>IMAGERY TRIAGE</h3>${decisionCard(img.decision)}<img class="imagery-preview" src="${escapeHtml(img.preview_url)}" alt="NASA GIBS preview" /><div class="small">${escapeHtml(img.caveat||'')}</div>` : `<div class="card" onclick="analyzeImagery(${d.coordinate.lat},${d.coordinate.lng})"><div class="title"><strong>Run Imagery Triage</strong><span class="country">NASA / USGS</span></div><div class="desc">Score public imagery cues around this coordinate.</div></div>`}
     <h3>NEAREST HOTSPOTS</h3>
     ${hotspots}
     <h3>NEAREST MISSION ASSETS</h3>
     <div class="card">${assets}</div>
     <h3>AVAILABLE IMAGERY CONTEXT</h3>
     <div class="card">${imagery}</div>
+  `;
+}
+
+function renderImageryAnalysis(d) {
+  const indicators = (d.indicators||[]).map(i => `
+    <div class="card">
+      <div class="title"><strong>${escapeHtml(i.name)}</strong><span class="decision-score">${escapeHtml(i.score)}</span></div>
+      <div class="desc">${escapeHtml(i.why)}</div>
+      <div class="small">Layer: ${escapeHtml(i.layer)}</div>
+    </div>
+  `).join('');
+  const events = (d.nearby_events||[]).map(e => `
+    <div class="small">▸ <strong>${escapeHtml(e.name)}</strong> · ${escapeHtml(e.source)} · ${escapeHtml(e.kind)} · ${e.distance_km} km</div>
+  `).join('');
+  const previews = (d.alternate_previews||[]).map(p => `
+    <div class="card" onclick="window.open('${escapeHtml(p.preview_url)}','_blank')">
+      <div class="title"><strong>${escapeHtml(p.name)}</strong><span class="country">${escapeHtml(p.provider)}</span></div>
+      <div class="desc">${escapeHtml(p.use)}</div>
+    </div>`).join('');
+  $("body").innerHTML = `
+    <h3>OSINT IMAGERY ANALYSIS</h3>
+    <div class="desc">Coordinate: ${d.coordinate.lat}, ${d.coordinate.lng}</div>
+    ${decisionCard(d.decision)}
+    <img class="imagery-preview" src="${escapeHtml(d.preview_url)}" alt="NASA GIBS preview" />
+    <div class="reason">${escapeHtml(d.caveat||'Public imagery triage only.')}</div>
+    <h3>IMAGE-PROCESSING STYLE CUES</h3>
+    ${indicators}
+    <h3>NEARBY LIVE EVENTS</h3>
+    <div class="card">${events || '<span class="hint">No live events within 750 km.</span>'}</div>
+    <h3>OPEN IMAGERY LAYERS</h3>
+    ${previews}
   `;
 }
 
@@ -1006,7 +1150,8 @@ function renderMission(d) {
     </div>`).join('');
   const actions = (d.actions||[]).map(a => `<div class="small" style="padding:4px 0;border-bottom:1px dotted var(--line)">▸ ${escapeHtml(a)}</div>`).join('');
   let domain = '';
-  const missionDecisions = (((GLOBAL||{}).decision_deck)||[]).filter(x => x.domain === d.id).map(decisionCard).join('');
+  const missionDecisions = [d.decision, ...(((GLOBAL||{}).decision_deck)||[]).filter(x => x.domain === d.id)]
+    .filter(Boolean).map(decisionCard).join('');
   if (d.id === 'cyber_defense') {
     const recentKev = (detail.recent_kev||[]).slice(0,6).map(v => `<div class="small">▸ <strong>${v.cve}</strong> · ${escapeHtml(v.vendor||'')} ${escapeHtml(v.product||'')} · due ${escapeHtml(v.due_date||'')}</div>`).join('');
     const iocs = (detail.iocs||[]).slice(0,6).map(i => `<div class="small">▸ <strong>${escapeHtml(i.ioc||'')}</strong> · ${escapeHtml(i.malware||'unknown')} · ${escapeHtml(i.type||'')}</div>`).join('');
@@ -1083,7 +1228,15 @@ function renderHotspot(d) {
 function renderBriefing() {
   const d = CURRENT_DATA;
   if (d._kind !== 'briefing') {
-    $("body").innerHTML = `<div class="hint">Press <strong>BRIEFING</strong> for an AI-synthesized commander's intel report.</div>`;
+    $("body").innerHTML = `
+      <h3>COMMANDER BRIEFING</h3>
+      <div class="desc">Press BRIEFING to synthesize the current query across CISA, MITRE, NVD, abuse.ch, OFAC, FBI/State, and live geo feeds.</div>
+      <div class="card" onclick="generateBriefing()">
+        <div class="title"><strong>Generate Current BLUF</strong><span class="country">AI + OSINT</span></div>
+        <div class="desc">Uses the query box if filled; otherwise summarizes the current global threat picture.</div>
+      </div>
+      ${d && d.decision_deck ? `<h3>TOP DECISIONS AVAILABLE NOW</h3>${(d.decision_deck||[]).slice(0,3).map(decisionCard).join('')}` : ''}
+    `;
     return;
   }
   const sources = (d.sources||[]).map(s=>`<span class="badge">${s}</span>`).join(' ');
@@ -1102,7 +1255,16 @@ function renderBriefing() {
 
 function renderScan() {
   const d = CURRENT_DATA;
-  if (d._kind !== 'scan') { $("body").innerHTML = '<div class="hint">Type an indicator and press LIVE SCAN.</div>'; return; }
+  if (d._kind !== 'scan') {
+    $("body").innerHTML = `
+      <h3>LIVE SCAN</h3>
+      <div class="desc">Type an IP, domain, URL, hash, or CVE in the query bar. SENTINEL will enrich it against public/free OSINT where available and clearly mark key-required sources.</div>
+      <div class="card" onclick="$('q').focus()">
+        <div class="title"><strong>Ready for Indicator</strong><span class="country">NVD / EPSS / GreyNoise / abuse.ch</span></div>
+        <div class="desc">Example: CVE-2024-3400, 8.8.8.8, example.com, or a file hash.</div>
+      </div>`;
+    return;
+  }
   const r = d.results || {};
   const cards = Object.keys(r).map(k => {
     const v = r[k];
@@ -1297,6 +1459,16 @@ function renderMoney(d) {
 }
 
 function renderSearchResults(d) {
+  if (!d || d._kind !== 'search') {
+    $("body").innerHTML = `
+      <h3>QUERY RESULTS</h3>
+      <div class="desc">Use QUERY ALL AGENCIES to search MITRE groups/techniques, CISA KEV, live IOCs, OFAC sanctions, and wanted cyber actors.</div>
+      <div class="card" onclick="$('q').focus()">
+        <div class="title"><strong>Search Everything</strong><span class="country">Fusion index</span></div>
+        <div class="desc">Try a country, APT group, CVE, vendor, sanctioned entity, or malware family.</div>
+      </div>`;
+    return;
+  }
   const groups = (d.groups||[]).map(g => `
     <div class="card" onclick="openGroup('${g.id}')">
       <div class="title"><strong>${escapeHtml(g.name)}</strong>
