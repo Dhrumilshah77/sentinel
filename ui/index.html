@@ -159,6 +159,7 @@
     text-transform:uppercase; }
   .report-actions button:hover { color:var(--accent); border-color:var(--accent); }
   .report-actions button.risk { color:#fff; border-color:var(--crit); background:#32101a; }
+  .report-actions button.act { color:#001124; border-color:var(--ok); background:var(--ok); }
   .dossier-body { flex:1; overflow:auto; padding:12px 14px; }
   .dossier-body h3 { font-size:10.5px; color:var(--mute); margin:14px 0 6px;
     text-transform:uppercase; letter-spacing:2px; font-weight:600;
@@ -298,6 +299,12 @@
   .reason { margin-top:7px; padding:7px 8px; background:#070b10; border:1px dashed #253244;
     border-radius:4px; color:#9aa6b2; line-height:1.45; }
   .risk-note { border-left:3px solid var(--crit); }
+  .action-card { border-left:3px solid var(--gold); }
+  .action-toolbar { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+  .action-toolbar button { background:#0a0f15; color:var(--mute); border:1px solid var(--line);
+    border-radius:3px; padding:4px 6px; font:inherit; font-size:9px; cursor:pointer; text-transform:uppercase; }
+  .action-toolbar button:hover { color:var(--accent); border-color:var(--accent); }
+  .action-toolbar button.active { color:#001124; background:var(--accent); border-color:var(--accent); }
   .mode-matrix { display:grid; grid-template-columns:repeat(4, 1fr); gap:7px; margin:8px 0; }
   .mode-cell { border:1px solid var(--line); background:#070b10; border-radius:4px; padding:8px; min-height:96px; }
   .mode-cell.active { border-color:var(--accent); box-shadow:inset 0 0 0 1px rgba(95,180,255,.35); }
@@ -403,8 +410,10 @@
       <button data-tab="scan" onclick="switchTab('scan')">LIVE SCAN</button>
     </div>
     <div class="report-actions">
+      <button class="act" onclick="actNow()">Act Now</button>
       <button class="risk" onclick="addRiskPointer()">Add Risk Pointer</button>
       <button onclick="addRiskNote()">Add Note</button>
+      <button onclick="openActionBoard()">Review / Done</button>
       <button onclick="emailReport()">Email</button>
       <button onclick="printReport()">Print/Share</button>
       <button onclick="downloadPdfReport()">Download PDF</button>
@@ -444,11 +453,12 @@ let DECISION_LOOKUP = {};
 let COUNTRY_BOUNDARIES = [], ADMIN1_BOUNDARIES = [], US_STATE_BOUNDARIES = [], COUNTRY_LABELS = [], ADMIN1_LABELS = [];
 let ADMIN1_LOADING = false, ADMIN1_REQUESTED = false;
 let RISK_NOTES = [];
+let ACTION_ITEMS = [];
 let LIVE_TICK = 0;
 let DATA_MODE = 'real';
 const LAYERS = {
   boundaries:'Country Borders',
-  states:'US State Borders',
+  states:'State/Province Borders',
   cyber:'Cyber Arcs',
   strategic:'Strategic Hotspots',
   conflict:'Conflict',
@@ -463,7 +473,7 @@ const LAYERS = {
   command:'Command Targets',
   labels:'Labels',
 };
-let ACTIVE_LAYERS = new Set(['boundaries','states','cyber','strategic','conflict','shipping','disaster','satellite','finance','command']);
+let ACTIVE_LAYERS = new Set();
 
 function fmtNum(n){ return (n||0).toLocaleString(); }
 function nowTick(){ $("now").textContent = new Date().toISOString().replace('T',' ').slice(0,19) + 'Z'; }
@@ -647,23 +657,17 @@ function renderLayerControls() {
 function toggleLayer(id) {
   if (ACTIVE_LAYERS.has(id)) ACTIVE_LAYERS.delete(id);
   else ACTIVE_LAYERS.add(id);
+  if (['boundaries','states'].includes(id) && ACTIVE_LAYERS.has(id) && !COUNTRY_BOUNDARIES.length) loadBoundaryLayers();
+  if (id === 'states' && ACTIVE_LAYERS.has(id)) ensureAdmin1Boundaries();
   renderLayerControls();
   updateGlobeLayers();
   updateBoundaryVisibility();
 }
 
 function setPageLayers(id) {
-  if (id === 'satellite_imagery') ACTIVE_LAYERS = new Set(['satellite','disaster','weather','quakes','strategic','command']);
-  else if (id === 'aviation_maritime') ACTIVE_LAYERS = new Set(['aviation','shipping','strategic','conflict','command']);
-  else if (id === 'aml_finance' || id === 'sanctions') ACTIVE_LAYERS = new Set(['finance','strategic','cyber','conflict']);
-  else if (id === 'cyber_defense') ACTIVE_LAYERS = new Set(['cyber','strategic','command','finance']);
-  else if (id === 'disasters') ACTIVE_LAYERS = new Set(['disaster','weather','quakes','satellite','strategic','command']);
-  else if (id === 'geo_conflict') ACTIVE_LAYERS = new Set(['conflict','cyber','strategic','finance','satellite']);
-  else if (id === 'supply_chain') ACTIVE_LAYERS = new Set(['shipping','disaster','weather','strategic','command']);
-  else ACTIVE_LAYERS = new Set(['cyber','strategic','conflict','shipping','disaster','satellite','finance','command']);
-  ACTIVE_LAYERS.add('boundaries');
-  ACTIVE_LAYERS.add('states');
   renderLayerControls();
+  updateGlobeLayers();
+  updateBoundaryVisibility();
 }
 
 function renderGlobalMetrics(metrics) {
@@ -785,6 +789,7 @@ async function openPage(id, push=true) {
 }
 
 async function bootstrap() {
+  loadActionItems();
   const [s, exp, sanc, mission, global] = await Promise.all([
     fetch('/intel/summary').then(r=>r.json()),
     fetch('/exposure').then(r=>r.json()),
@@ -854,7 +859,6 @@ async function initGlobe() {
   // Load arcs + markers
   const j = await fetch('/globe/arcs').then(r=>r.json());
   ARCS = j.arcs; TARGETS = j.targets; MARKERS = j.origins;
-  setTimeout(loadBoundaryLayers, 250);
 
   G.arcsData(ARCS)
     .arcColor(a => [a.color, '#5fb4ff'])
@@ -1136,6 +1140,12 @@ function updateGlobeLayers() {
     .map(h => ({...h, marker_kind:h.kind, label:h.name.toUpperCase()}));
   const allMarkers = [...aptMarkers, ...missionMarkers, ...extraMarkers]
     .filter(d => ACTIVE_LAYERS.has(layerForMarker(d)));
+  if (!ACTIVE_LAYERS.size) {
+    G.arcsData([]);
+    G.pointsData([]);
+    G.htmlElementsData([]);
+    return;
+  }
   G.arcsData(ACTIVE_LAYERS.has('cyber') ? ARCS : []);
   G.pointsData(ACTIVE_LAYERS.has('command') ? TARGETS : []);
   G.htmlElementsData(allMarkers)
@@ -1374,6 +1384,7 @@ function renderTab() {
     if (d._kind === 'wanted')     return renderWanted(d);
     if (d._kind === 'sanctions')  return renderSanctions(d);
     if (d._kind === 'money')      return renderMoney(d);
+    if (d._kind === 'actions')    return renderActionBoard();
     $("body").innerHTML = `<div class="hint">Pick an action above or click a marker on the globe.</div>`;
     return;
   }
@@ -1472,6 +1483,100 @@ function reportText() {
     `Risk notes:`,
     ...(r.notes.length ? r.notes.map(x => `- ${x}`) : ['- No risk notes added.']),
   ].join('\n');
+}
+
+function loadActionItems() {
+  try { ACTION_ITEMS = JSON.parse(localStorage.getItem('sentinel.actions') || '[]'); }
+  catch { ACTION_ITEMS = []; }
+}
+
+function saveActionItems() {
+  localStorage.setItem('sentinel.actions', JSON.stringify(ACTION_ITEMS.slice(-100)));
+}
+
+function actionFromCurrent(status='start') {
+  const r = currentReportSummary();
+  const coord = currentCoordinate() || {};
+  return {
+    id:`act-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    title:r.title,
+    page:r.page,
+    tab:r.tab,
+    score:r.score,
+    action:r.action,
+    evidence:r.evidence,
+    sources:r.sources,
+    lat:coord.lat ?? null,
+    lng:coord.lng ?? null,
+    status,
+    truth:'unverified',
+    created_at:new Date().toISOString(),
+    updated_at:new Date().toISOString(),
+  };
+}
+
+function actNow() {
+  const item = actionFromCurrent('start');
+  ACTION_ITEMS.push(item);
+  saveActionItems();
+  if (item.lat != null && item.lng != null) focusMapDatum({ ...item, name:item.title, marker_kind:'focus', source:'SENTINEL action queue' }, CURRENT_PAGE, true);
+  openActionBoard();
+}
+
+function updateAction(id, patch) {
+  ACTION_ITEMS = ACTION_ITEMS.map(a => a.id === id ? { ...a, ...patch, updated_at:new Date().toISOString() } : a);
+  saveActionItems();
+  renderActionBoard();
+}
+
+function openActionBoard() {
+  loadActionItems();
+  CURRENT_DATA = { _kind:'actions' };
+  CURRENT_TAB = 'dossier';
+  document.querySelectorAll('.dossier-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'dossier'));
+  renderActionBoard();
+}
+
+function actionStatusButton(item, label, patch) {
+  const active = patch.status ? item.status === patch.status : patch.truth ? item.truth === patch.truth : false;
+  return `<button class="${active?'active':''}" onclick="updateAction('${escapeHtml(item.id)}', ${JSON.stringify(patch).replace(/"/g, '&quot;')})">${escapeHtml(label)}</button>`;
+}
+
+function renderActionBoard(filter='all') {
+  const groups = {
+    all: ACTION_ITEMS,
+    start: ACTION_ITEMS.filter(a => a.status === 'start'),
+    review: ACTION_ITEMS.filter(a => a.status === 'review'),
+    done: ACTION_ITEMS.filter(a => a.status === 'done'),
+  };
+  const items = (groups[filter] || ACTION_ITEMS).slice().reverse();
+  $("body").innerHTML = `
+    <h3>ACTION BOARD · START / REVIEW / COMPLETED</h3>
+    <div class="reason"><strong>Purpose:</strong> Track whether a finding is true, false, started, in review, or done. These are local analyst marks for the demo browser.</div>
+    <div class="action-toolbar">
+      <button class="${filter==='all'?'active':''}" onclick="renderActionBoard('all')">All ${ACTION_ITEMS.length}</button>
+      <button class="${filter==='start'?'active':''}" onclick="renderActionBoard('start')">Started ${groups.start.length}</button>
+      <button class="${filter==='review'?'active':''}" onclick="renderActionBoard('review')">Review ${groups.review.length}</button>
+      <button class="${filter==='done'?'active':''}" onclick="renderActionBoard('done')">Completed ${groups.done.length}</button>
+      <button onclick="actNow()">Add Current</button>
+    </div>
+    ${items.map(item => `
+      <div class="card action-card">
+        <div class="title"><strong>${escapeHtml(item.title)}</strong><span class="country">${escapeHtml(item.status.toUpperCase())}</span></div>
+        <div class="desc">${escapeHtml(item.action)}</div>
+        <div class="small">${escapeHtml(item.page)} · ${escapeHtml(item.score)} · truth: ${escapeHtml(item.truth)} · updated ${escapeHtml(item.updated_at)}</div>
+        <div class="action-toolbar">
+          ${actionStatusButton(item, 'True', {truth:'true'})}
+          ${actionStatusButton(item, 'False', {truth:'false'})}
+          ${actionStatusButton(item, 'Unverified', {truth:'unverified'})}
+          ${actionStatusButton(item, 'Start', {status:'start'})}
+          ${actionStatusButton(item, 'Review', {status:'review'})}
+          ${actionStatusButton(item, 'Done', {status:'done'})}
+          ${item.lat != null && item.lng != null ? `<button onclick="focusMapDatum(${JSON.stringify({ ...item, name:item.title, marker_kind:'focus', source:'Action board' }).replace(/"/g, '&quot;')}, '${CURRENT_PAGE}', true)">Map</button>` : ''}
+        </div>
+      </div>
+    `).join('') || '<div class="hint">No action items yet. Click Act Now from any current finding.</div>'}
+  `;
 }
 
 function renderRiskNotes() {
@@ -1849,16 +1954,35 @@ async function openGeoDossier(lat, lng) {
     focusMapDatum({ lat, lng, name:'Clicked coordinate', marker_kind:'focus', score:75, source:'Globe click' }, CURRENT_PAGE);
     const latS = encodeURIComponent(lat.toFixed(5));
     const lngS = encodeURIComponent(lng.toFixed(5));
-    const [d, img] = await Promise.all([
+    const [d, img, place] = await Promise.all([
       fetch(`/monitor/geo?lat=${latS}&lng=${lngS}`).then(r=>r.json()),
       fetch(`/monitor/imagery/analyze?lat=${latS}&lng=${lngS}`).then(r=>r.json()),
+      reversePlace(lat, lng),
     ]);
-    CURRENT_DATA = { _kind:'geo', ...d, imagery:img };
+    CURRENT_DATA = { _kind:'geo', ...d, imagery:img, place };
     CURRENT_TAB = 'mission';
     document.querySelectorAll('.dossier-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'mission'));
     renderGeoDossier(CURRENT_DATA);
   } catch (e) {
     $("body").innerHTML = `<div class="hint">Coordinate dossier failed: ${escapeHtml(e.message||e)}</div>`;
+  }
+}
+
+async function reversePlace(lat, lng) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=10&addressdetails=1`;
+    const j = await fetch(url, { headers:{ 'Accept':'application/json' } }).then(r=>r.json());
+    const a = j.address || {};
+    return {
+      name:j.display_name || '',
+      city:a.city || a.town || a.village || a.hamlet || '',
+      state:a.state || a.region || a.province || a.county || '',
+      country:a.country || '',
+      country_code:a.country_code || '',
+      source:'OpenStreetMap Nominatim reverse geocode',
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -1875,6 +1999,14 @@ async function analyzeImagery(lat, lng) {
 }
 
 function renderGeoDossier(d) {
+  const place = d.place || {};
+  const placeHtml = place && (place.country || place.state || place.city || place.name) ? `
+    <h3>LOCATION RESOLUTION</h3>
+    <div class="card">
+      <div class="title"><strong>${escapeHtml(place.city || place.state || place.country || 'Selected location')}</strong><span class="country">${escapeHtml(place.country || '')}</span></div>
+      <div class="desc">${escapeHtml(place.name || '')}</div>
+      <div class="small">state/province: <strong>${escapeHtml(place.state || 'unknown')}</strong> · source: ${escapeHtml(place.source || 'reverse geocode')}</div>
+    </div>` : '';
   const hotspots = (d.nearest_hotspots||[]).map(h => `
     <div class="card" onclick="focusHotspotId(decodeURIComponent('${encodeURIComponent(h.id || h.name)}'), decodeURIComponent('${encodeURIComponent(h.module || '')}'))">
       <div class="title"><strong>${escapeHtml(h.name)}</strong><span class="risk risk-${h.severity}">${escapeHtml(h.severity)}</span></div>
@@ -1889,6 +2021,7 @@ function renderGeoDossier(d) {
   $("body").innerHTML = `
     <h3>COORDINATE DECISION DOSSIER</h3>
     <div class="desc">Clicked location: ${d.coordinate.lat}, ${d.coordinate.lng}</div>
+    ${placeHtml}
     ${decisionCard(d.decision)}
     ${img ? `<h3>IMAGERY TRIAGE</h3>${decisionCard(img.decision)}<img class="imagery-preview" src="${escapeHtml(img.preview_url)}" alt="NASA GIBS preview" /><div class="small">${escapeHtml(img.caveat||'')}</div>` : `<div class="card" onclick="analyzeImagery(${d.coordinate.lat},${d.coordinate.lng})"><div class="title"><strong>Run Imagery Triage</strong><span class="country">NASA / USGS</span></div><div class="desc">Score public imagery cues around this coordinate.</div></div>`}
     <h3>NEAREST HOTSPOTS</h3>
