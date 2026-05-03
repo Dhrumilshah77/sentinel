@@ -256,6 +256,8 @@
   .map-marker.satellite .label { color:#7aff95; }
   .map-marker.imagery_analysis .ring { border-color:#7aff95; box-shadow:0 0 14px rgba(122,255,149,.7); }
   .map-marker.imagery_analysis .label { color:#7aff95; }
+  .map-marker.focus .ring { border-color:#ffffff; box-shadow:0 0 18px rgba(255,255,255,.85); transform:scale(1.35); }
+  .map-marker.focus .label { color:#ffffff; opacity:1; font-size:11px; }
   .map-marker.earthquake .ring { border-color:#ff8a3c; box-shadow:0 0 10px rgba(255,138,60,.5); }
   .map-marker.earthquake .label { color:#ff8a3c; }
   .decision-card { border-left:3px solid var(--accent); }
@@ -388,6 +390,7 @@ let CURRENT_TAB='briefing', CURRENT_DATA=null, CHAT_HIST=[];
 let OPEN_PAGES = [{ id:'global', label:'Global Monitor' }];
 let CURRENT_PAGE = 'global';
 let CURRENT_MAP = { filterModule:null, extraMarkers:[] };
+let DECISION_LOOKUP = {};
 const LAYERS = {
   cyber:'Cyber Arcs',
   strategic:'Strategic Hotspots',
@@ -724,9 +727,51 @@ function renderMapMarkers(filterModule=null, extraMarkers=[]) {
   updateGlobeLayers();
 }
 
+function focusMapDatum(d, moduleId=null, keepModuleExtras=false) {
+  if (!d || d.lat == null || d.lng == null || !G) return false;
+  const targetModule = moduleId || d.module || d.domain || CURRENT_PAGE;
+  if (targetModule && targetModule !== 'global') setPageLayers(targetModule);
+  const marker = {
+    ...d,
+    id: d.id || `focus-${Date.now()}`,
+    marker_kind: 'focus',
+    label: `FOCUS · ${String(d.name || d.title || d.label || targetModule || 'SIGNAL').toUpperCase()}`.slice(0, 60),
+    score: d.score ?? d.decision_score ?? null,
+    source: d.source || 'Right-panel drilldown',
+    severity: d.severity || d.band || 'FOCUS',
+    why: d.why || d.score_reason || d.recommended_action || 'Selected from the right-side dossier.',
+  };
+  ACTIVE_LAYERS.add('strategic');
+  ACTIVE_LAYERS.add(layerForMarker(marker));
+  renderLayerControls();
+  const base = keepModuleExtras && targetModule && targetModule !== 'global' ? moduleExtraMarkers(targetModule) : [];
+  renderMapMarkers(targetModule && targetModule !== 'global' ? targetModule : CURRENT_MAP.filterModule, [marker, ...base]);
+  stopGlobeRotation();
+  G.pointOfView({ lat:Number(d.lat), lng:Number(d.lng), altitude:0.95 }, 850);
+  return true;
+}
+
+function focusDecision(id) {
+  const d = DECISION_LOOKUP[id];
+  if (!d) return;
+  if (!focusMapDatum(d, d.domain, true) && d.domain) openPage(d.domain);
+}
+
+function focusHotspotId(id, moduleId=null) {
+  const pools = [
+    ...(((MISSION||{}).hotspots)||[]),
+    ...(((GLOBAL||{}).convergence)||[]),
+    ...(((SATELLITE||{}).events)||[]),
+    ...((((GLOBAL||{}).live||{}).map_events)||[]),
+  ];
+  const item = pools.find(x => String(x.id || x.name) === String(id));
+  if (item) focusMapDatum(item, moduleId || item.module, true);
+}
+
 function layerForMarker(d) {
   const k = String(d.marker_kind || d.kind || '').toLowerCase();
   const src = String(d.source || '').toLowerCase();
+  if (k.includes('focus')) return 'strategic';
   if (k.includes('aircraft')) return 'aviation';
   if (k.includes('earthquake') || src.includes('usgs')) return 'quakes';
   if (k.includes('weather') || k.includes('storm') || src.includes('noaa/nws')) return 'weather';
@@ -871,6 +916,7 @@ async function loadCountryGroups(country) {
   const j = await fetch('/intel/map').then(r=>r.json());
   const m = j.markers.find(x => x.country === country);
   if (!m) return;
+  focusMapDatum({ ...m, name:`${country} attributed actor origin`, marker_kind:'actor', score:82, severity:'HIGH', source:'MITRE ATT&CK attribution map' }, 'cyber_defense', true);
   CURRENT_DATA = { _kind:'country', country, groups: m.groups };
   switchTab('dossier'); renderTab();
 }
@@ -881,6 +927,12 @@ async function loadView(kind) {
     fetch('/exposure').then(r=>r.json()),
     fetch('/sanctions/summary').then(r=>r.json()),
   ]);
+  const mapModule = ['money','wanted','sanctions'].includes(kind) ? 'aml_finance' :
+    ['groups','iocs','exposure','threats','ransomware'].includes(kind) ? 'cyber_defense' : CURRENT_PAGE;
+  if (mapModule && mapModule !== 'global') {
+    renderMapMarkers(mapModule, moduleExtraMarkers(mapModule));
+    flyToPage(mapModule);
+  }
   CURRENT_DATA = { _kind: kind, summary: s, exposure: exp, sanctions: sanc };
   switchTab('dossier'); renderTab();
 }
@@ -899,6 +951,7 @@ async function loadMission(moduleId, push=true) {
 
 async function loadHotspot(hotspotId) {
   const j = await fetch('/mission/hotspot/'+encodeURIComponent(hotspotId)).then(r=>r.json());
+  if (j.hotspot) focusMapDatum(j.hotspot, j.hotspot.module, true);
   CURRENT_DATA = { _kind:'hotspot', ...j };
   switchTab('mission'); renderTab();
 }
@@ -996,6 +1049,8 @@ function sourcePills(sources) {
 
 function decisionCard(d) {
   if (!d) return '';
+  const decisionId = `decision-${Object.keys(DECISION_LOOKUP).length}`;
+  DECISION_LOOKUP[decisionId] = d;
   const comps = d.components || {};
   const bars = Object.entries(comps).map(([k,v]) => `
     <div class="small">${escapeHtml(k.replaceAll('_',' '))}: ${escapeHtml(v)}</div>
@@ -1004,7 +1059,7 @@ function decisionCard(d) {
   const evidence = (d.evidence||[]).map(x => `<div class="small">▸ ${escapeHtml(x)}</div>`).join('');
   const sources = (d.sources||[]).map(x => `<span class="badge">${escapeHtml(x)}</span>`).join(' ');
   return `
-    <div class="card decision-card" onclick="${d.domain ? `openPage('${d.domain}')` : ''}">
+    <div class="card decision-card" onclick="focusDecision('${decisionId}')">
       <div class="title">
         <strong>${escapeHtml(d.title)}</strong>
         <span class="decision-score">${escapeHtml(d.score)}</span>
@@ -1024,7 +1079,7 @@ function decisionCard(d) {
 
 function renderGlobal(d) {
   const convergence = (d.convergence||[]).slice(0,8).map(h => `
-    <div class="card" onclick="openPage('${h.module}')">
+    <div class="card" onclick="focusHotspotId(decodeURIComponent('${encodeURIComponent(h.id || h.name)}'), decodeURIComponent('${encodeURIComponent(h.module || '')}'))">
       <div class="title"><strong>${escapeHtml(h.name)}</strong><span class="risk risk-${h.severity}">${h.score}</span></div>
       <div class="desc">${escapeHtml(h.why)}</div>
       <div class="small">${escapeHtml(h.kind)} · ${escapeHtml(h.severity)} · opens ${escapeHtml(PAGE_LABELS[h.module]||h.module)}</div>
@@ -1110,6 +1165,7 @@ function renderSatelliteEvent(idx) {
 
 function renderEventDrilldown(e) {
   const event = e._event ? { _kind:'event', ...e } : e;
+  focusMapDatum(event, event.module || CURRENT_PAGE, true);
   CURRENT_DATA = event;
   CURRENT_TAB = 'mission';
   document.querySelectorAll('.dossier-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === 'mission'));
@@ -1130,6 +1186,7 @@ function renderEventDrilldown(e) {
 
 async function openGeoDossier(lat, lng) {
   try {
+    focusMapDatum({ lat, lng, name:'Clicked coordinate', marker_kind:'focus', score:75, source:'Globe click' }, CURRENT_PAGE);
     const latS = encodeURIComponent(lat.toFixed(5));
     const lngS = encodeURIComponent(lng.toFixed(5));
     const [d, img] = await Promise.all([
@@ -1148,6 +1205,7 @@ async function openGeoDossier(lat, lng) {
 async function analyzeImagery(lat, lng) {
   const latS = encodeURIComponent(Number(lat).toFixed(5));
   const lngS = encodeURIComponent(Number(lng).toFixed(5));
+  focusMapDatum({ lat:Number(lat), lng:Number(lng), name:'Imagery analysis point', marker_kind:'imagery_analysis', score:80, source:'NASA GIBS imagery triage' }, 'satellite_imagery', true);
   $("body").innerHTML = `<div class="hint"><span class="pulse"></span> Pulling public imagery context and scoring OSINT activity cues for ${latS}, ${lngS}…</div>`;
   const d = await fetch(`/monitor/imagery/analyze?lat=${latS}&lng=${lngS}`).then(r=>r.json());
   CURRENT_DATA = { _kind:'imagery', ...d };
@@ -1158,7 +1216,7 @@ async function analyzeImagery(lat, lng) {
 
 function renderGeoDossier(d) {
   const hotspots = (d.nearest_hotspots||[]).map(h => `
-    <div class="card" onclick="openPage('${h.module}')">
+    <div class="card" onclick="focusHotspotId(decodeURIComponent('${encodeURIComponent(h.id || h.name)}'), decodeURIComponent('${encodeURIComponent(h.module || '')}'))">
       <div class="title"><strong>${escapeHtml(h.name)}</strong><span class="risk risk-${h.severity}">${escapeHtml(h.severity)}</span></div>
       <div class="desc">${escapeHtml(h.why)}</div>
       <div class="small">${h.distance_km} km · opens ${escapeHtml(PAGE_LABELS[h.module]||h.module)}</div>
