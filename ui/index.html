@@ -100,10 +100,10 @@
   .page-tabs button.active { color:var(--accent); border-color:var(--accent); }
 
   /* main grid */
-  .main { display:grid; grid-template-columns: minmax(360px, 33vw) 1fr; gap:0;
+  .main { display:grid; grid-template-columns: minmax(460px, 50vw) 1fr; gap:0;
     height: calc(100vh - 33px - 49px - 47px - 84px - 72px - 54px); }
-  body.dashboard-page .main { grid-template-columns:minmax(480px, 46vw) 1fr; }
-  body.detail-page .main { grid-template-columns:minmax(360px, 33vw) 1fr; }
+  body.dashboard-page .main { grid-template-columns:minmax(460px, 50vw) 1fr; }
+  body.detail-page .main { grid-template-columns:minmax(460px, 50vw) 1fr; }
   /* classification + header + commandbar + actions + agencies */
 
   .globe-wrap { position:relative; background:#020306; overflow:hidden; }
@@ -138,7 +138,7 @@
   @media (max-width: 1200px) {
     .main,
     body.dashboard-page .main,
-    body.detail-page .main { grid-template-columns:minmax(320px, 38vw) 1fr; }
+    body.detail-page .main { grid-template-columns:minmax(340px, 50vw) 1fr; }
     .live-stream { display:none; }
     .layer-panel { width:220px; }
   }
