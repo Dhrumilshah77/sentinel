@@ -1448,6 +1448,10 @@ function currentReportSummary() {
   const title = decision.title || d.title || d.label || d.country || ((d.hotspot||{}).name) || PAGE_LABELS[CURRENT_PAGE] || 'SENTINEL current context';
   const score = decision.score != null ? `${decision.score} ${decision.band || ''}` : 'No score available';
   const action = decision.recommended_action || ((d.actions||[])[0]) || 'Review current indicators and confirm with source evidence.';
+  const scoreReason = decision.score_reason || 'This score is meant to show how urgent, important, and actionable the current finding is for mission operations.';
+  const impactAmount = decision.impact_amount || decision.impact_range || 'Impact amount not estimated';
+  const impactExplanation = decision.impact_explanation || '';
+  const lossExplanation = decision.loss_explanation || '';
   const evidence = (decision.evidence || []).slice(0,5);
   const sources = (decision.sources || (d.sources_detail||[]).map(s=>s.name) || []).slice(0,8);
   const notes = RISK_NOTES.filter(n => !n.page || n.page === CURRENT_PAGE).slice(-5).map(n => `${n.severity}: ${n.text}`);
@@ -1456,7 +1460,11 @@ function currentReportSummary() {
     page: PAGE_LABELS[CURRENT_PAGE] || CURRENT_PAGE,
     tab: CURRENT_TAB,
     score,
+    scoreReason,
     action,
+    impactAmount,
+    impactExplanation,
+    lossExplanation,
     evidence,
     sources,
     notes,
@@ -1472,6 +1480,10 @@ function reportText() {
     `Context: ${r.page} / ${r.tab}`,
     `Subject: ${r.title}`,
     `Score: ${r.score}`,
+    `Why this score: ${r.scoreReason}`,
+    `Potential impact / avoided loss: ${r.impactAmount}`,
+    ...(r.impactExplanation ? [`Impact meaning: ${r.impactExplanation}`] : []),
+    ...(r.lossExplanation ? [`Loss concern: ${r.lossExplanation}`] : []),
     `Recommended action: ${r.action}`,
     ``,
     `Evidence:`,
@@ -1672,7 +1684,7 @@ function expansionPanel(expansion) {
     <h3>FIELD-LEVEL CHECKS / WHAT CHANGES THE DECISION</h3>
     <div class="intel-table">${checks}</div>
     <h3>SCORING RUBRIC + OPERATOR OUTPUTS</h3>
-    <div class="card"><div class="reason"><strong>Why scores move:</strong><br>${rubric}</div><div class="reason"><strong>Outputs:</strong><br>${outputs}</div></div>
+    <div class="card"><div class="reason"><strong>Plain-language score drivers:</strong><br>${rubric}</div><div class="reason"><strong>Outputs:</strong><br>${outputs}</div></div>
   `;
 }
 
@@ -1819,6 +1831,16 @@ function decisionCard(d) {
   `).join('');
   const evidence = (d.evidence||[]).map(x => `<div class="small">▸ ${escapeHtml(x)}</div>`).join('');
   const sources = (d.sources||[]).map(x => `<span class="badge">${escapeHtml(x)}</span>`).join(' ');
+  const scoreReason = d.score_reason || 'This score is meant to show how urgent, important, and actionable this finding is for mission operations, based on public evidence and proximity to assets, actors, or routes.';
+  const impactAmount = d.impact_amount || d.impact_range || '';
+  const impactExplanation = d.impact_explanation || '';
+  const lossExplanation = d.loss_explanation || '';
+  const impactBlock = impactAmount ? `
+    <div class="reason">
+      <strong>Potential impact / avoided loss:</strong> ${escapeHtml(impactAmount)}
+      ${impactExplanation ? `<br><strong>Impact meaning:</strong> ${escapeHtml(impactExplanation)}` : ''}
+      ${lossExplanation ? `<br><strong>Loss concern:</strong> ${escapeHtml(lossExplanation)}` : ''}
+    </div>` : '';
   return `
     <div class="card decision-card" onclick="focusDecision('${decisionId}')">
       <div class="title">
@@ -1831,7 +1853,8 @@ function decisionCard(d) {
       <div class="desc"><strong>COA:</strong> ${escapeHtml(d.recommended_action||'')}</div>
       <div class="small">owner: ${escapeHtml(d.owner||'')}</div>
       <div class="component-bars">${bars}</div>
-      <div class="reason"><strong>Why this score:</strong> ${escapeHtml(d.score_reason || 'Weighted from mission impact, urgency, actionability, confidence, and source evidence.')}</div>
+      <div class="reason"><strong>Why this score:</strong> ${escapeHtml(scoreReason)}</div>
+      ${impactBlock}
       <div style="margin-top:7px">${evidence}</div>
       <div style="margin-top:7px">${sources}</div>
     </div>

@@ -363,6 +363,64 @@ def _score_band(score: int) -> str:
     return "MONITOR"
 
 
+DOMAIN_IMPACTS: dict[str, dict[str, str]] = {
+    "cyber_defense": {
+        "amount": "$5M-$75M avoided outage, recovery, incident-response, and mission-delay cost",
+        "impact": "Mission networks, identity systems, and exposed vendors could lose availability or integrity during an active exploitation window.",
+        "loss": "Delayed patching can turn a known exploited vulnerability into ransomware downtime, credential theft, or degraded command-and-control support.",
+    },
+    "aml_finance": {
+        "amount": "$1M-$50M potential fraud loss, sanctions exposure, or cybercrime funding interruption",
+        "impact": "Fraud and laundering routes can fund hostile cyber activity, move stolen funds, and create legal or reputational exposure for partners.",
+        "loss": "If this is missed, money can leave the reachable banking or crypto perimeter before investigators can freeze it.",
+    },
+    "sanctions": {
+        "amount": "$500K-$25M potential blocked exposure, penalties, procurement delay, or counterparty risk",
+        "impact": "A sanctioned or indirectly owned entity can contaminate procurement, payments, shipping, or cyber actor investigations.",
+        "loss": "Failure to screen can create enforcement risk and allow adversary-linked procurement or finance activity to continue.",
+    },
+    "supply_chain": {
+        "amount": "$2M-$100M sustainment delay, rerouting, replacement, or vendor recovery exposure",
+        "impact": "A vendor, route, port, or supplier problem can slow mission sustainment even when no direct attack occurs.",
+        "loss": "If not acted on early, commanders may discover the dependency only after lead times or alternate routes are already constrained.",
+    },
+    "geo_conflict": {
+        "amount": "$10M-$250M operational disruption, logistics delay, evacuation, or regional posture exposure",
+        "impact": "Conflict, cyber, sanctions, and infrastructure signals are converging in a way that can change operational assumptions.",
+        "loss": "The largest risk is strategic surprise: a regional event can cascade into cyber spillover, logistics delay, or partner-force disruption.",
+    },
+    "aviation_maritime": {
+        "amount": "$5M-$150M rerouting, port delay, airlift, fuel, insurance, or sustainment exposure",
+        "impact": "Air, sea, port, and chokepoint signals can change movement timelines and sustainment options.",
+        "loss": "If route risk is ignored, cargo, fuel, or personnel movement can be delayed when alternatives are most expensive.",
+    },
+    "disasters": {
+        "amount": "$1M-$80M infrastructure, continuity, power, comms, or response-cost exposure",
+        "impact": "Natural events can degrade communications, mobility, power, and cyber-response capacity around mission assets.",
+        "loss": "The avoidable loss is usually time: unplanned outage response, route closure, or facility degradation.",
+    },
+    "satellite_imagery": {
+        "amount": "$1M-$60M avoided false-negative, delayed response, route, facility, or infrastructure assessment cost",
+        "impact": "Public imagery and geospatial feeds can cue human review of damage, thermal activity, flooding, smoke, or route constraints.",
+        "loss": "A missed imagery cue can delay confirmation of a field condition; a false positive can waste tasking and analyst attention.",
+    },
+    "insider_ai": {
+        "amount": "$2M-$120M data loss, model compromise, credential exposure, or deployment rollback risk",
+        "impact": "Insider behavior or AI artifact drift can expose sensitive data or let compromised models influence decisions.",
+        "loss": "The most expensive failure mode is trusted automation acting on tampered data or a compromised model before humans notice.",
+    },
+    "global": {
+        "amount": "$1M-$250M cross-domain mission risk depending on affected asset, route, actor, or counterparty",
+        "impact": "The selected signal touches multiple domains and needs a commander-readable triage decision.",
+        "loss": "The main loss is delayed prioritization: teams may work the wrong signal first while a higher-impact issue matures.",
+    },
+}
+
+
+def _impact_profile(domain: str) -> dict[str, str]:
+    return DOMAIN_IMPACTS.get(domain, DOMAIN_IMPACTS["global"])
+
+
 def _distance_km(a_lat: float, a_lng: float, b_lat: float, b_lng: float) -> float:
     r = 6371.0
     p1, p2 = math.radians(a_lat), math.radians(b_lat)
@@ -388,16 +446,19 @@ def _decision(
     lng: float | None = None,
     domain: str = "global",
 ) -> dict[str, Any]:
+    clipped = max(0, min(100, int(score)))
+    profile = _impact_profile(domain)
+    band = _score_band(score)
     reason = (
-        f"Score {max(0, min(100, int(score)))} combines mission impact "
-        f"({impact}), urgency ({urgency}), actionability ({actionability}), "
-        f"and confidence ({confidence}). Evidence: "
-        + "; ".join(evidence[:3])
+        f"This should be treated as {band} because {profile['impact']} "
+        f"It receives a higher score when the signal is near a mission asset or strategic hotspot, can worsen quickly, and has a concrete action the watch team can take now. "
+        f"The clearest evidence is: {'; '.join(evidence[:3])}. "
+        f"Acting early protects the team from this loss path: {profile['loss']}"
     )
     return {
         "title": title,
-        "score": max(0, min(100, int(score))),
-        "band": _score_band(score),
+        "score": clipped,
+        "band": band,
         "confidence": confidence,
         "components": {
             "mission_impact": impact,
@@ -409,6 +470,9 @@ def _decision(
         "time_to_action": time_to_action,
         "evidence": evidence,
         "score_reason": reason,
+        "impact_amount": profile["amount"],
+        "impact_explanation": profile["impact"],
+        "loss_explanation": profile["loss"],
         "sources": sources,
         "domain": domain,
         "lat": lat,

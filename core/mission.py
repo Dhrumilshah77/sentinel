@@ -522,6 +522,55 @@ def _module_metrics(module_id: str, intel: Any, sanctions: Any, exposure: Any) -
     ]
 
 
+MODULE_IMPACT_PROFILES: dict[str, dict[str, str]] = {
+    "cyber_defense": {
+        "amount": "$5M-$75M avoided mission-system outage, recovery, and incident-response exposure",
+        "why": "This score is high because the cyber page is looking at known exploited vulnerabilities, ransomware-used CVEs, exposed vendors, and active IOCs that could affect mission systems before a normal patch cycle finishes.",
+        "loss": "The likely loss is downtime, emergency rebuild work, compromised credentials, and degraded command or sensor support.",
+    },
+    "aml_finance": {
+        "amount": "$1M-$50M potential fraud loss, frozen-fund opportunity, or sanctions/cybercrime funding exposure",
+        "why": "This score is high because fraud, sanctions, mule activity, crypto laundering, and public cybercrime funding indicators can move money quickly and become unrecoverable if not held early.",
+        "loss": "The likely loss is stolen funds leaving reachable rails, missed sanctions exposure, or hostile cyber actors retaining funding.",
+    },
+    "sanctions": {
+        "amount": "$500K-$25M potential blocked transaction, procurement delay, penalty, or counterparty exposure",
+        "why": "This score is high when an entity, alias, country, program, vessel, or ownership path could connect mission activity to a sanctioned or high-risk counterparty.",
+        "loss": "The likely loss is compliance exposure, delayed procurement, or adversary-linked counterparties remaining in the flow.",
+    },
+    "supply_chain": {
+        "amount": "$2M-$100M potential sustainment delay, alternate-source cost, rerouting, or vendor recovery impact",
+        "why": "This score is high when active vendor exploits, single-source dependencies, chokepoints, or route disruptions can affect mission timelines even without a direct attack.",
+        "loss": "The likely loss is late replacement, route delay, emergency sourcing, or avoidable sustainment interruption.",
+    },
+    "geo_conflict": {
+        "amount": "$10M-$250M operational disruption, posture change, logistics delay, or regional escalation exposure",
+        "why": "This score is high when conflict, sanctions pressure, cyber capability, and mission proximity converge in one region and could change commander assumptions quickly.",
+        "loss": "The likely loss is strategic surprise, cyber spillover, route closure, partner disruption, or delayed warning.",
+    },
+    "aviation_maritime": {
+        "amount": "$5M-$150M rerouting, air/sea movement, port delay, fuel, insurance, or sustainment exposure",
+        "why": "This score is high when air tracks, maritime chokepoints, ports, weather, or conflict signals can disrupt movement or sustainment planning.",
+        "loss": "The likely loss is delayed cargo, higher route cost, poor movement timing, or missed navigation-risk warning.",
+    },
+    "disasters": {
+        "amount": "$1M-$80M continuity, infrastructure, power, comms, route, or response-cost exposure",
+        "why": "This score is high when a public disaster signal is close enough to mission assets, routes, ports, power, or communications to affect operations.",
+        "loss": "The likely loss is late continuity action, route degradation, facility downtime, or slower emergency response.",
+    },
+    "satellite_imagery": {
+        "amount": "$1M-$60M avoided delayed assessment, route/facility impact, false-negative, or wasted tasking cost",
+        "why": "This score is high when imagery layers, live events, strategic hotspots, and mission assets overlap enough to justify human imagery review.",
+        "loss": "The likely loss is delayed confirmation of damage, flooding, thermal activity, or route constraints.",
+    },
+    "insider_ai": {
+        "amount": "$2M-$120M data-loss, credential, model-compromise, or deployment rollback exposure",
+        "why": "This score is high when user behavior, data movement, privilege, or model artifact drift could let trusted systems act on compromised data.",
+        "loss": "The likely loss is sensitive data exfiltration, secret leakage, model rollback, or untrusted AI output influencing decisions.",
+    },
+}
+
+
 def _module_decision(module_id: str, module: dict[str, Any], intel: Any, sanctions: Any, exposure: Any) -> dict[str, Any]:
     metrics = _module_metrics(module_id, intel, sanctions, exposure)
     hotspots = [h for h in HOTSPOTS if h["module"] == module_id]
@@ -545,6 +594,11 @@ def _module_decision(module_id: str, module: dict[str, Any], intel: Any, sanctio
         f"{len(hotspots)} map hotspots, {severe} high/critical",
         f"Top metric: {metrics[0]['label']} = {metrics[0]['value']}",
     ]
+    profile = MODULE_IMPACT_PROFILES.get(module_id, {
+        "amount": "$1M-$50M estimated mission impact exposure",
+        "why": "This score is high because the module has enough trusted public evidence, operational relevance, and actionable next steps to justify analyst attention.",
+        "loss": "The likely loss is delayed triage or missed cross-domain warning.",
+    })
     return {
         "title": f"{module['label']} decision score",
         "score": score,
@@ -560,10 +614,14 @@ def _module_decision(module_id: str, module: dict[str, Any], intel: Any, sanctio
         "time_to_action": "Immediate triage",
         "evidence": evidence,
         "score_reason": (
-            f"Score {score} is based on module baseline risk ({base}), "
-            f"{severe} high/critical hotspots, {source_count} trusted sources, "
-            f"and the leading metric {metrics[0]['label']}={metrics[0]['value']}."
+            f"{profile['why']} For this page, the strongest operational cue is the pattern behind "
+            f"{metrics[0]['label'].lower()} ({metrics[0]['value']}), reinforced by {severe} high/critical hotspots "
+            f"and {source_count} trusted public sources. That means this is not just an interesting signal; it is a decision item "
+            f"with a named owner, a next action, and a loss path to reduce. Acting now helps avoid this outcome: {profile['loss']}"
         ),
+        "impact_amount": profile["amount"],
+        "impact_explanation": profile["why"],
+        "loss_explanation": profile["loss"],
         "sources": module["sources"][:6],
         "domain": module_id,
     }
