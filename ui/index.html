@@ -432,7 +432,7 @@ let OPEN_PAGES = [{ id:'global', label:'Global Monitor' }];
 let CURRENT_PAGE = 'global';
 let CURRENT_MAP = { filterModule:null, extraMarkers:[] };
 let DECISION_LOOKUP = {};
-let COUNTRY_BOUNDARIES = [], US_STATE_BOUNDARIES = [], COUNTRY_LABELS = [];
+let COUNTRY_BOUNDARIES = [], ADMIN1_BOUNDARIES = [], US_STATE_BOUNDARIES = [], COUNTRY_LABELS = [], ADMIN1_LABELS = [];
 let RISK_NOTES = [];
 let LIVE_TICK = 0;
 let DATA_MODE = 'real';
@@ -873,12 +873,15 @@ async function loadBoundaryLayers() {
   const sources = [
     fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson').then(r=>r.json()).catch(()=>null),
     fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson').then(r=>r.json()).catch(()=>null),
+    fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_1_states_provinces.geojson').then(r=>r.json()).catch(()=>null),
     fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json').then(r=>r.json()).catch(()=>null),
   ];
-  const [worldHi, worldFallback, states] = await Promise.all(sources);
+  const [worldHi, worldFallback, admin1, states] = await Promise.all(sources);
   const world = (worldHi && worldHi.features) ? worldHi : worldFallback;
   COUNTRY_BOUNDARIES = (world && world.features) ? world.features : [];
   COUNTRY_LABELS = COUNTRY_BOUNDARIES.map(countryLabelDatum).filter(Boolean);
+  ADMIN1_BOUNDARIES = (admin1 && admin1.features) ? admin1.features : [];
+  ADMIN1_LABELS = ADMIN1_BOUNDARIES.map(admin1LabelDatum).filter(Boolean);
   US_STATE_BOUNDARIES = (states && states.features) ? states.features : [];
   updateBoundaryVisibility();
 }
@@ -890,7 +893,7 @@ function countryName(f) {
 
 function stateName(f) {
   const p = (f && f.properties) || {};
-  return p.name || p.NAME || p.STATE_NAME || p.state || 'State';
+  return p.name_en || p.name || p.NAME || p.STATE_NAME || p.region || p.state || 'State / Province';
 }
 
 function geometryPoints(geom) {
@@ -925,16 +928,38 @@ function countryLabelDatum(f) {
   };
 }
 
+function admin1LabelDatum(f) {
+  const d = countryLabelDatum(f);
+  if (!d) return null;
+  const p = f.properties || {};
+  d.name = stateName(f);
+  d.country = p.admin || p.adm0_name || p.ADMIN || p.geonunit || '';
+  d.iso = p.iso_3166_2 || p.postal || p.gu_a3 || '';
+  d.small = d.area < 8 || d.name.length <= 8;
+  return d;
+}
+
+function angularDistance(aLat, aLng, bLat, bLng) {
+  const dLat = Math.abs(Number(aLat) - Number(bLat));
+  let dLng = Math.abs(Number(aLng) - Number(bLng));
+  if (dLng > 180) dLng = 360 - dLng;
+  return dLat + dLng;
+}
+
 function updateBoundaryVisibility() {
   if (!G) return;
-  const altitude = (G.pointOfView() || {}).altitude || 2;
+  const pov = G.pointOfView() || {};
+  const altitude = pov.altitude || 2;
   const showCountries = ACTIVE_LAYERS.has('boundaries');
-  const showStates = ACTIVE_LAYERS.has('states') && altitude <= 1.65;
+  const showStates = ACTIVE_LAYERS.has('states') && altitude <= 1.35;
   const close = altitude <= 1.1;
+  const stateClose = altitude <= 0.95;
   const countryColor = close ? 'rgba(185,215,245,0.74)' : altitude < 1.35 ? 'rgba(160,190,225,0.45)' : 'rgba(135,170,205,0.22)';
+  const stateSource = ADMIN1_BOUNDARIES.length ? ADMIN1_BOUNDARIES : US_STATE_BOUNDARIES;
+  const stateSourceName = ADMIN1_BOUNDARIES.length ? 'Natural Earth admin-1 states/provinces layer' : 'PublicaMundi US states GeoJSON';
   G.polygonsData([
     ...(showCountries ? COUNTRY_BOUNDARIES.map(f => ({...f, _boundary:'country'})) : []),
-    ...(showStates ? US_STATE_BOUNDARIES.map(f => ({...f, _boundary:'state'})) : []),
+    ...(showStates ? stateSource.map(f => ({...f, _boundary:'state'})) : []),
   ])
     .polygonGeoJsonGeometry(d => d.geometry)
     .polygonCapColor(() => 'rgba(0,0,0,0)')
@@ -943,23 +968,29 @@ function updateBoundaryVisibility() {
     .polygonAltitude(d => d._boundary === 'state' ? 0.006 : close ? 0.006 : 0.003)
     .polygonLabel(d => markerTooltip({
       name: d._boundary === 'state' ? stateName(d) : countryName(d),
-      kind: d._boundary === 'state' ? 'US state boundary' : 'country boundary',
-      source: d._boundary === 'state' ? 'PublicaMundi US states GeoJSON' : 'Natural Earth admin-0 boundary layer',
+      kind: d._boundary === 'state' ? 'state / province boundary' : 'country boundary',
+      source: d._boundary === 'state' ? stateSourceName : 'Natural Earth admin-0 boundary layer',
       why: d._boundary === 'state'
-        ? 'State boundaries appear only when zoomed in to avoid clutter.'
+        ? 'State/province boundaries appear only when zoomed in to avoid clutter.'
         : 'Country borders sharpen and labels appear for small countries when zoomed in.',
     }));
-  const labels = showCountries && altitude <= 1.25
+  const countryLabels = showCountries && altitude <= 1.25
     ? COUNTRY_LABELS.filter(d => close ? true : d.small).slice(0, close ? 260 : 120)
     : [];
-  G.labelsData(labels)
+  const adminLabels = showStates && stateClose
+    ? ADMIN1_LABELS
+      .map(d => ({...d, _dist: angularDistance(pov.lat || 0, pov.lng || 0, d.lat, d.lng)}))
+      .sort((a,b) => a._dist - b._dist)
+      .slice(0, 140)
+    : [];
+  G.labelsData([...countryLabels, ...adminLabels])
     .labelLat('lat')
     .labelLng('lng')
-    .labelText(d => close ? d.name : (d.iso || d.name).slice(0, 12))
-    .labelSize(d => d.small ? 0.42 : 0.34)
-    .labelColor(d => d.small ? 'rgba(235,245,255,0.95)' : 'rgba(185,215,245,0.72)')
+    .labelText(d => d.country ? `${d.name}${d.iso ? ' · ' + d.iso : ''}` : close ? d.name : (d.iso || d.name).slice(0, 12))
+    .labelSize(d => d.country ? 0.28 : d.small ? 0.42 : 0.34)
+    .labelColor(d => d.country ? 'rgba(212,175,55,0.88)' : d.small ? 'rgba(235,245,255,0.95)' : 'rgba(185,215,245,0.72)')
     .labelAltitude(0.012)
-    .labelDotRadius(d => d.small ? 0.12 : 0.04)
+    .labelDotRadius(d => d.country ? 0.05 : d.small ? 0.12 : 0.04)
     .labelDotOrientation(() => 'bottom')
     .labelResolution(2);
 }
