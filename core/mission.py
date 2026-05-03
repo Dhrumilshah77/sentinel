@@ -182,6 +182,181 @@ HOTSPOTS: list[dict[str, Any]] = [
 ]
 
 
+DETAILED_MODULES: dict[str, dict[str, Any]] = {
+    "cyber_defense": {
+        "commander_view": "Prioritize defensive action by exploitability, mission asset exposure, actor intent, and time-to-patch.",
+        "typologies": [
+            {"name": "Initial access exploitation", "risk": "CRITICAL", "signals": ["CISA KEV present", "EPSS high", "internet-facing product", "ransomware-known flag"], "decision": "Patch or isolate before routine change window."},
+            {"name": "Credential and identity attack", "risk": "HIGH", "signals": ["impossible travel", "MFA fatigue", "new OAuth consent", "admin role change"], "decision": "Revoke sessions, rotate credentials, inspect privilege paths."},
+            {"name": "Command and control", "risk": "HIGH", "signals": ["ThreatFox IOC hit", "new DNS beacon", "rare ASN", "JA3 or user-agent outlier"], "decision": "Block indicator, hunt peer hosts, preserve packet/log evidence."},
+            {"name": "Supply-chain package compromise", "risk": "HIGH", "signals": ["new dependency", "unexpected maintainer", "install script change", "SBOM drift"], "decision": "Freeze release, compare hashes, rebuild from trusted source."},
+            {"name": "AI/model deployment tampering", "risk": "HIGH", "signals": ["model hash drift", "unexpected pickle/joblib artifact", "new container layer", "baseline eval change"], "decision": "Quarantine artifact and require human approval before inference use."},
+        ],
+        "detection_fields": ["asset_owner", "mission_system", "vendor", "product", "cve", "kev_date_added", "epss", "known_ransomware", "internet_exposed", "ttp_id", "ioc", "first_seen", "last_seen", "control_gap"],
+        "scoring_formula": "0.30 mission criticality + 0.25 active exploitation + 0.20 actor intent + 0.15 exposure + 0.10 control gap.",
+        "history": [
+            {"period": "2017", "case": "WannaCry / NotPetya pattern", "lesson": "Known vulnerabilities plus flat networks create operational disruption beyond IT."},
+            {"period": "2020", "case": "SolarWinds supply-chain compromise", "lesson": "Trusted software updates can become the intrusion path."},
+            {"period": "2021-2026", "case": "VPN, edge appliance, and identity-provider exploitation", "lesson": "Patch internet-facing control planes first, not just highest CVSS."},
+        ],
+        "live_sources": ["CISA KEV JSON", "NIST NVD CVE 2.0", "FIRST EPSS", "MITRE ATT&CK STIX", "abuse.ch ThreatFox", "Spamhaus DROP/EDROP", "SANS DShield"],
+        "workflows": ["Asset -> CVE -> KEV/EPSS -> exposed service -> actor TTP -> recommended control", "IOC -> malware family -> ATT&CK technique -> block/hunt query", "Vendor -> mission system -> open CVEs -> patch sequence"],
+    },
+    "aml_finance": {
+        "commander_view": "Connect fraud, sanctions, cybercrime, and crypto movement into one explainable financial-threat picture.",
+        "typologies": [
+            {"name": "Crypto fraud and investment scams", "risk": "HIGH", "signals": ["new wallet cluster", "rapid inbound deposits", "exchange hop", "mixer exposure", "victim complaints"], "decision": "Freeze/flag exposed wallets and create SAR-style evidence packet."},
+            {"name": "Ransomware cashout", "risk": "CRITICAL", "signals": ["ThreatFox malware family", "OFAC-linked actor", "mixing service", "nested exchange", "peel chain"], "decision": "Prioritize sanctions and law-enforcement notification workflow."},
+            {"name": "First-party fraud", "risk": "MEDIUM", "signals": ["synthetic identity traits", "no normal income pattern", "rapid credit seeking", "device reuse"], "decision": "Step-up KYC and restrict high-risk movement."},
+            {"name": "Third-party fraud", "risk": "HIGH", "signals": ["victim account takeover", "new beneficiary", "new device", "SIM swap", "velocity spike"], "decision": "Hold transfer, contact verified owner, preserve session telemetry."},
+            {"name": "Account takeover", "risk": "HIGH", "signals": ["impossible travel", "credential stuffing", "new device fingerprint", "password reset then transfer"], "decision": "Lock account, revoke tokens, route to fraud ops."},
+            {"name": "PEP and sanctions screening", "risk": "HIGH", "signals": ["OFAC alias hit", "country/program match", "close associate", "state-owned entity"], "decision": "Escalate enhanced due diligence and sanctions counsel review."},
+            {"name": "Layering / peeling chains", "risk": "CRITICAL", "signals": ["many small outputs", "round-dollar transfers", "rapid chain hops", "bridge/mixer exposure"], "decision": "Graph funds movement and flag convergence wallets."},
+            {"name": "Trade-based laundering", "risk": "HIGH", "signals": ["invoice mismatch", "dual-use goods", "shell entity", "high-risk port"], "decision": "Link sanctions, supply-chain, and shipping pages before release."},
+        ],
+        "detection_fields": ["customer_id", "beneficial_owner", "pep_flag", "sanctions_program", "wallet", "counterparty", "device_id", "ip_geo", "transaction_amount", "velocity_1h", "velocity_24h", "mixer_exposure", "exchange_hops", "chargeback_history", "kyc_age_days"],
+        "scoring_formula": "0.25 sanctions/PEP exposure + 0.20 velocity anomaly + 0.20 account/device anomaly + 0.20 graph-risk proximity + 0.15 source-of-funds uncertainty.",
+        "history": [
+            {"period": "2019", "case": "Convertible virtual currency typologies", "lesson": "FinCEN highlighted darknet markets, P2P exchangers, kiosks, and unregistered MSBs as key risks."},
+            {"period": "2020", "case": "FATF virtual asset red flags", "lesson": "Anonymity features, weak jurisdictions, unusual transaction patterns, and source-of-funds gaps are primary indicators."},
+            {"period": "2020-2026", "case": "DPRK crypto theft and ransomware monetization", "lesson": "Cyber and AML cannot be separated; proceeds movement often funds strategic programs."},
+        ],
+        "live_sources": ["OFAC SDN", "FBI Cyber Most Wanted", "State Rewards for Justice", "DoJ public indictments", "FATF red-flag typologies", "FinCEN advisories", "GDELT financial-crime watch"],
+        "workflows": ["Identity -> device -> account -> transaction -> counterparty -> sanctions/PEP", "Wallet -> peel chain -> mixer/bridge -> exchange -> withdrawal entity", "Threat actor -> malware -> wallet/alias -> OFAC/FBI/DoJ evidence"],
+        "flow_edges": [
+            ["Victim funds", "Compromised account", "ATO / social engineering"],
+            ["Compromised account", "Mule account", "third-party fraud"],
+            ["Mule account", "Crypto exchange", "conversion"],
+            ["Crypto exchange", "Peel chain wallets", "layering"],
+            ["Peel chain wallets", "Mixer / bridge", "obfuscation"],
+            ["Mixer / bridge", "Nested exchange", "cashout"],
+            ["Nested exchange", "Sanctioned actor", "attribution / investigation"],
+        ],
+    },
+    "sanctions": {
+        "commander_view": "Screen people, entities, vessels, programs, aliases, and countries against public sanctions and cyber attribution.",
+        "typologies": [
+            {"name": "Alias and transliteration match", "risk": "HIGH", "signals": ["name similarity", "known alias", "date/place overlap"], "decision": "Route to entity-resolution review."},
+            {"name": "Beneficial ownership concealment", "risk": "HIGH", "signals": ["shell company", "shared address", "nominee director", "high-risk jurisdiction"], "decision": "Escalate ownership graph."},
+            {"name": "Vessel / maritime sanctions evasion", "risk": "HIGH", "signals": ["AIS gaps", "ship-to-ship transfer", "flag hopping", "dark port call"], "decision": "Pivot to Air/Sea and supply-chain pages."},
+            {"name": "Cyber actor designation", "risk": "CRITICAL", "signals": ["linked APT", "ransomware wallet", "DoJ indictment", "RFJ bounty"], "decision": "Attach actor dossier and blocklist pivots."},
+        ],
+        "detection_fields": ["name", "alias", "program", "country", "address", "vessel_imo", "ownership_edge", "linked_apt", "bounty_usd", "indictment_ref"],
+        "scoring_formula": "0.30 direct list match + 0.25 ownership proximity + 0.20 cyber attribution + 0.15 jurisdiction risk + 0.10 confidence.",
+        "history": [
+            {"period": "2014-2026", "case": "Russia sanctions expansion", "lesson": "Entity networks and procurement fronts shift over time."},
+            {"period": "2018-2026", "case": "DPRK cyber and crypto designations", "lesson": "Sanctions, cyber theft, and weapons-program funding are linked in public reporting."},
+        ],
+        "live_sources": ["OFAC SDN", "FBI Cyber Most Wanted", "Rewards for Justice", "DoJ releases", "GDELT sanctions watch"],
+        "workflows": ["Entity -> alias -> address -> program -> ownership graph", "APT -> wanted actor -> sanctions program -> public bounty", "Vessel/entity -> port/chokepoint -> supply-chain risk"],
+    },
+    "supply_chain": {
+        "commander_view": "Rank mission dependency risk across software vendors, chokepoints, ports, cloud, and logistics nodes.",
+        "typologies": [
+            {"name": "Exposed vendor stack", "risk": "CRITICAL", "signals": ["DoD-stack vendor", "CISA KEV", "ransomware known", "critical mission use"], "decision": "Patch/isolate vendor technology first."},
+            {"name": "Port and chokepoint disruption", "risk": "HIGH", "signals": ["GDACS event", "GDELT route disruption", "weather/quake nearby", "strategic chokepoint"], "decision": "Prepare alternate route impact note."},
+            {"name": "Software dependency drift", "risk": "HIGH", "signals": ["new dependency", "SBOM mismatch", "unexpected maintainer", "build hash change"], "decision": "Freeze release and rebuild from known-good source."},
+            {"name": "Dual-use procurement risk", "risk": "HIGH", "signals": ["sanctioned country", "front company", "sensitive commodity", "unusual route"], "decision": "Pivot sanctions and AML pages."},
+        ],
+        "detection_fields": ["vendor", "product", "mission_use", "kev_count", "ransom_count", "sbom_package", "port", "route", "country", "weather_event", "supplier_tier", "alternate_supplier"],
+        "scoring_formula": "0.30 mission criticality + 0.25 active exploit exposure + 0.20 route/chokepoint risk + 0.15 supplier concentration + 0.10 recovery time.",
+        "history": [
+            {"period": "2020", "case": "Trusted software update compromise", "lesson": "Assume supplier trust requires continuous verification."},
+            {"period": "2021-2026", "case": "Edge appliance mass exploitation", "lesson": "Internet-facing vendor products can become operational choke points."},
+            {"period": "2023-2026", "case": "Canal/Red Sea/logistics disruption", "lesson": "Physical route stress changes cyber and sustainment priorities."},
+        ],
+        "live_sources": ["CISA KEV", "NIST NVD", "NASA EONET", "USGS", "GDACS", "GDELT", "OpenSky"],
+        "workflows": ["Vendor -> product -> active exploit -> mission system -> mitigation", "Route -> chokepoint -> live event -> sustainment impact", "Supplier -> country -> sanctions -> procurement risk"],
+    },
+    "geo_conflict": {
+        "commander_view": "Fuse public conflict, sanctions, cyber attribution, disaster, and media signals into regional risk.",
+        "typologies": [
+            {"name": "Cyber spillover from kinetic conflict", "risk": "CRITICAL", "signals": ["regional conflict", "APT attribution", "infrastructure targeting", "wiper/ransomware history"], "decision": "Increase monitoring on logistics, satellite comms, and suppliers."},
+            {"name": "Sanctions pressure and retaliation", "risk": "HIGH", "signals": ["new sanctions narratives", "state media attention", "cyber actor activity"], "decision": "Brief likely cyber/economic retaliation paths."},
+            {"name": "Chokepoint escalation", "risk": "HIGH", "signals": ["Red Sea/Hormuz/Suez/Malacca proximity", "shipping disruption", "military rhetoric"], "decision": "Pivot Air/Sea and Supply Chain."},
+            {"name": "Information environment shift", "risk": "MEDIUM", "signals": ["GDELT volume spike", "negative tone", "bot-like repetition"], "decision": "Separate public reporting from verified operational evidence."},
+        ],
+        "detection_fields": ["region", "actor_country", "apt_groups", "sanctions_count", "gdelt_volume", "gdelt_tone", "hotspot_distance", "disaster_overlap", "mission_asset_distance"],
+        "scoring_formula": "0.25 conflict severity + 0.20 cyber actor capability + 0.20 mission proximity + 0.20 sanctions/economic pressure + 0.15 live event convergence.",
+        "history": [
+            {"period": "2014-2026", "case": "Ukraine / Black Sea", "lesson": "Kinetic, cyber, sanctions, GPS, and infrastructure risk converge."},
+            {"period": "2020-2026", "case": "Taiwan Strait / South China Sea", "lesson": "Military signaling affects cyber, shipping, semiconductor, and alliance risk."},
+            {"period": "2023-2026", "case": "Red Sea disruption", "lesson": "Regional conflict quickly changes global logistics assumptions."},
+        ],
+        "live_sources": ["GDELT 2.1", "CIA World Factbook", "MITRE ATT&CK", "OFAC SDN", "NASA/USGS/NOAA/GDACS"],
+        "workflows": ["Hotspot -> actor country -> APTs -> sanctions -> mission impact", "Media signal -> live event -> chokepoint -> logistics/cyber priority"],
+    },
+    "aviation_maritime": {
+        "commander_view": "Track airspace, maritime chokepoints, ports, GPS/GNSS interference, and logistics confidence.",
+        "typologies": [
+            {"name": "Air track anomaly", "risk": "MEDIUM", "signals": ["OpenSky state vector", "unexpected altitude", "route deviation", "origin mismatch"], "decision": "Use as cue for watch officer, not attribution."},
+            {"name": "Port/chokepoint disruption", "risk": "HIGH", "signals": ["GDACS/GDELT alert", "weather event", "conflict hotspot", "route dependency"], "decision": "Open supply-chain alternate-route workflow."},
+            {"name": "GNSS interference cue", "risk": "HIGH", "signals": ["regional conflict", "reported GPS jamming", "aviation/maritime route impact"], "decision": "Flag navigation integrity risk."},
+            {"name": "Sanctioned vessel / dark shipping", "risk": "HIGH", "signals": ["AIS gap", "flag change", "ship-to-ship transfer", "OFAC relation"], "decision": "Pivot sanctions and AML entity graph."},
+        ],
+        "detection_fields": ["callsign", "icao24", "origin_country", "altitude_m", "velocity_mps", "port", "chokepoint", "route", "weather_alert", "gdacs_event", "sanctions_relation"],
+        "scoring_formula": "0.25 chokepoint criticality + 0.20 live disruption + 0.20 route dependency + 0.20 conflict proximity + 0.15 navigation integrity.",
+        "history": [
+            {"period": "2021-2026", "case": "Suez / Red Sea route stress", "lesson": "A single corridor can alter global sustainment timelines."},
+            {"period": "2022-2026", "case": "Black Sea aviation/maritime risk", "lesson": "Conflict zones create cascading air, sea, cyber, and insurance effects."},
+        ],
+        "live_sources": ["OpenSky Network", "GDACS", "GDELT", "NOAA/NWS", "NASA EONET", "OFAC SDN"],
+        "workflows": ["Aircraft -> state vector -> airspace region -> mission relevance", "Port -> chokepoint -> live event -> alternate route", "Vessel/entity -> sanctions -> AML graph"],
+    },
+    "disasters": {
+        "commander_view": "Detect natural-event impact on communications, logistics, power, cyber-response capacity, and mission assets.",
+        "typologies": [
+            {"name": "Earthquake infrastructure stress", "risk": "HIGH", "signals": ["USGS magnitude", "depth", "PAGER alert", "asset proximity"], "decision": "Assess facilities, routes, and comms fallback."},
+            {"name": "Wildfire / thermal anomaly", "risk": "HIGH", "signals": ["NASA EONET wildfire", "VIIRS thermal layer", "smoke/aerosol", "power grid proximity"], "decision": "Open imagery triage and logistics impact."},
+            {"name": "Storm / flood mobility degradation", "risk": "HIGH", "signals": ["NOAA warning", "IMERG precipitation", "GDACS flood/cyclone", "route overlap"], "decision": "Prepare sustainment and evacuation options."},
+            {"name": "Space weather communications risk", "risk": "MEDIUM", "signals": ["NOAA Kp index", "HF radio/GPS/satellite comms concern"], "decision": "Flag comms degradation risk to signal staff."},
+        ],
+        "detection_fields": ["event_id", "source", "category", "magnitude", "severity", "lat", "lng", "distance_to_asset", "distance_to_chokepoint", "imagery_layer", "estimated_start", "confidence"],
+        "scoring_formula": "0.25 event severity + 0.25 mission proximity + 0.20 infrastructure dependence + 0.15 duration + 0.15 confidence.",
+        "history": [
+            {"period": "Real time", "case": "USGS GeoJSON feeds", "lesson": "Earthquake feeds update continuously and can trigger fast location-based triage."},
+            {"period": "Real time", "case": "NASA EONET events", "lesson": "Wildfires, storms, ice, volcanoes, dust, and floods can be paired with imagery."},
+        ],
+        "live_sources": ["USGS GeoJSON", "NASA EONET", "NOAA/NWS alerts", "GDACS RSS", "NASA GIBS", "NOAA SWPC"],
+        "workflows": ["Event -> coordinates -> nearest mission asset -> imagery -> response priority", "Weather alert -> route/chokepoint -> supply-chain impact"],
+    },
+    "satellite_imagery": {
+        "commander_view": "Use public imagery as decision support: cue human review, compare layers, and explain why a coordinate deserves attention.",
+        "typologies": [
+            {"name": "Thermal anomaly review", "risk": "HIGH", "signals": ["VIIRS/MODIS thermal layer", "NASA EONET wildfire", "industrial heat cue"], "decision": "Compare thermal and true-color imagery."},
+            {"name": "Airfield / port activity cue", "risk": "MEDIUM", "signals": ["strategic hotspot proximity", "OpenSky/GDELT overlap", "route/chokepoint relevance"], "decision": "Human analyst compares current and historical imagery."},
+            {"name": "Flood / route degradation", "risk": "HIGH", "signals": ["IMERG precipitation", "NOAA alert", "GDACS flood/cyclone", "near route"], "decision": "Overlay logistics routes and alternatives."},
+            {"name": "Smoke/dust/obscuration", "risk": "MEDIUM", "signals": ["aerosol index", "EONET event", "weather alert"], "decision": "Flag ISR visibility and air/ground movement risk."},
+        ],
+        "detection_fields": ["lat", "lng", "bbox", "layer_id", "time", "nearest_hotspot", "nearest_asset", "thermal_score", "weather_score", "mobility_score", "military_relevance_score"],
+        "scoring_formula": "0.25 live event proximity + 0.25 hotspot proximity + 0.20 mission asset proximity + 0.20 imagery-layer availability + 0.10 confidence.",
+        "history": [
+            {"period": "Daily", "case": "NASA GIBS true-color / thermal / precipitation layers", "lesson": "Public imagery can support rapid before/after context."},
+            {"period": "Scene based", "case": "USGS LandsatLook and Copernicus Sentinel", "lesson": "Higher-detail open imagery supports manual confirmation."},
+        ],
+        "live_sources": ["NASA GIBS WMS/WMTS", "NASA EONET", "USGS LandsatLook", "Copernicus Browser", "NOAA/NWS", "GDACS", "GDELT"],
+        "workflows": ["Click coordinate -> imagery analysis -> preview image -> indicators -> recommended pivots", "Event -> imagery layer -> nearest asset -> mission note"],
+    },
+    "insider_ai": {
+        "commander_view": "Score anomalous user, network, and model-deployment behavior while keeping human approval in the loop.",
+        "typologies": [
+            {"name": "Insider data staging", "risk": "HIGH", "signals": ["unusual file access", "bulk download", "off-hours activity", "new external destination"], "decision": "Preserve logs, step-up review, limit data movement."},
+            {"name": "Account misuse after compromise", "risk": "HIGH", "signals": ["new device", "privilege change", "impossible travel", "rare command sequence"], "decision": "Revoke session and inspect peer activity."},
+            {"name": "Model/container tampering", "risk": "HIGH", "signals": ["hash drift", "unexpected package", "new base image", "eval regression"], "decision": "Block deployment until artifact verification passes."},
+            {"name": "Prompt/data exfiltration path", "risk": "MEDIUM", "signals": ["sensitive prompt", "unapproved connector", "large context export"], "decision": "Route to AI governance and DLP review."},
+        ],
+        "detection_fields": ["user_id", "role", "device_id", "file_count", "bytes_out", "time_of_day", "geo_velocity", "model_hash", "container_layer", "baseline_z", "isolation_score", "human_approval"],
+        "scoring_formula": "0.30 behavior anomaly + 0.25 data sensitivity + 0.20 privilege level + 0.15 model/artifact drift + 0.10 repeat history.",
+        "history": [
+            {"period": "CERT dataset pattern", "case": "Behavioral insider activity", "lesson": "User/entity baselines are more useful than one-off static rules."},
+            {"period": "Modern AI deployments", "case": "Model supply-chain drift", "lesson": "AI artifacts must be treated like deployable software with provenance."},
+        ],
+        "live_sources": ["NSL-KDD", "CERT Insider Threat", "CIC-IDS-2017", "CISA KEV", "MITRE ATT&CK", "local model/container manifest"],
+        "workflows": ["User -> behavior baseline -> sensitive data -> approval gate", "Model artifact -> hash/SBOM -> eval delta -> deployment decision"],
+    },
+}
+
+
 def _source_details(names: list[str]) -> list[dict[str, str]]:
     wanted = set(names)
     return [s for s in TRUSTED_SOURCES if s["name"] in wanted]
@@ -314,6 +489,7 @@ def _module_payload(module: dict[str, Any], intel: Any, sanctions: Any, exposure
         "sources_detail": _source_details(module["sources"]),
         "hotspots": hotspots,
         "detail": detail,
+        "deep_dive": DETAILED_MODULES.get(module_id, {}),
         "updated_at": datetime.utcnow().isoformat() + "Z",
     }
 

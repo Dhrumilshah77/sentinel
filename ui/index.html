@@ -257,6 +257,14 @@
     border-radius:4px; background:#020306; margin-top:8px; }
   .reason { margin-top:7px; padding:7px 8px; background:#070b10; border:1px dashed #253244;
     border-radius:4px; color:#9aa6b2; line-height:1.45; }
+  .intel-table { display:grid; gap:6px; }
+  .intel-row { display:grid; grid-template-columns: 118px 1fr; gap:8px; padding:7px 8px;
+    border:1px solid var(--line); background:#070b10; border-radius:4px; }
+  .intel-row .k { color:var(--gold); text-transform:uppercase; font-size:9px; letter-spacing:1px; }
+  .flow { display:grid; gap:5px; }
+  .flow-edge { padding:7px 8px; border:1px solid #223044; background:#070b10; border-radius:4px; }
+  .flow-edge strong { color:var(--accent); }
+  .flow-edge em { color:var(--gold); font-style:normal; }
 </style>
 </head>
 <body>
@@ -1140,6 +1148,45 @@ function renderAssetDossier(p) {
   `;
 }
 
+function renderDeepDive(d) {
+  const dd = d.deep_dive || {};
+  if (!Object.keys(dd).length) return '';
+  const typologies = (dd.typologies||[]).map(t => `
+    <div class="card">
+      <div class="title"><strong>${escapeHtml(t.name)}</strong><span class="risk risk-${escapeHtml(t.risk||'MEDIUM')}">${escapeHtml(t.risk||'MEDIUM')}</span></div>
+      <div class="desc"><strong>Decision:</strong> ${escapeHtml(t.decision||'Review and triage.')}</div>
+      <div style="margin-top:5px">${(t.signals||[]).map(s=>`<span class="ttp">${escapeHtml(s)}</span>`).join('')}</div>
+    </div>`).join('');
+  const fields = (dd.detection_fields||[]).map(f => `<span class="ttp">${escapeHtml(f)}</span>`).join('');
+  const history = (dd.history||[]).map(h => `
+    <div class="intel-row">
+      <div class="k">${escapeHtml(h.period)}</div>
+      <div><strong>${escapeHtml(h.case)}</strong><div class="desc">${escapeHtml(h.lesson)}</div></div>
+    </div>`).join('');
+  const sources = (dd.live_sources||[]).map(s => `<span class="badge">${escapeHtml(s)}</span>`).join(' ');
+  const workflows = (dd.workflows||[]).map(w => `<div class="small" style="padding:4px 0;border-bottom:1px dotted var(--line)">▸ ${escapeHtml(w)}</div>`).join('');
+  const flows = (dd.flow_edges||[]).map(e => `
+    <div class="flow-edge"><strong>${escapeHtml(e[0])}</strong> → <strong>${escapeHtml(e[1])}</strong><br><em>${escapeHtml(e[2])}</em></div>
+  `).join('');
+  return `
+    <h3>OPERATIONAL DEEP DIVE</h3>
+    <div class="card"><div class="desc">${escapeHtml(dd.commander_view || 'Detailed operating picture.')}</div></div>
+    <h3>TYPOLOGIES / SUB-PROBLEMS</h3>
+    ${typologies || '<div class="hint">No typologies configured.</div>'}
+    <h3>SCORING MODEL</h3>
+    <div class="card"><div class="reason"><strong>Formula:</strong> ${escapeHtml(dd.scoring_formula || 'Weighted mission-risk score.')}</div></div>
+    <h3>DETECTION FIELDS / DATA MODEL</h3>
+    <div class="card">${fields || '<span class="hint">No fields configured.</span>'}</div>
+    ${flows ? `<h3>MONEY / SIGNAL FLOW GRAPH</h3><div class="flow">${flows}</div>` : ''}
+    <h3>LIVE + HISTORICAL DATA SOURCES</h3>
+    <div class="card">${sources}</div>
+    <h3>HISTORICAL PATTERNS / LESSONS</h3>
+    <div class="intel-table">${history}</div>
+    <h3>DRILL-DOWN WORKFLOWS</h3>
+    <div class="card">${workflows}</div>
+  `;
+}
+
 function renderMission(d) {
   const detail = d.detail || {};
   const hotspots = (d.hotspots||[]).map(h => `
@@ -1196,6 +1243,7 @@ function renderMission(d) {
     <h3>ONE-CLICK ACTIONS</h3>
     ${actions}
     ${domain}
+    ${renderDeepDive(d)}
     <h3>MAP HOTSPOTS</h3>
     ${hotspots || '<div class="hint">No dedicated hotspots yet. The source catalog is still active for this module.</div>'}
   `;
