@@ -1,197 +1,293 @@
 # SENTINEL
 
-> **Multi-Agency Cyber Threat Fusion for the US Army.**
-> Eleven open-source intelligence feeds — CISA, MITRE, NIST, Treasury OFAC, State Dept, FBI, DoJ, NSA, DC3, FIRST EPSS, abuse.ch — fused in real time into one 3D operational picture, with grounded LLM analyst chat, live external scanning, and a defensive-posture view that tells commanders *exactly* where to harden first.
+**Mission decision intelligence for digital defense.**
 
-Built in 24 hours for the **3rd Annual National Security Hackathon (May 2026)** under **Problem Statement 4 — Digital Defense and Cybersecurity**.
+SENTINEL is a multi-domain command console built for the 3rd Annual National
+Security Hackathon. It fuses public, trusted national-security data into a
+single 3D operational picture that helps a commander answer:
+
+> What is happening, where is it happening, how confident are we, what is the
+> mission impact, and what action should we take first?
+
+The system started as a cyber threat fusion dashboard and now includes
+decision scoring, 3D map layers, satellite/imagery cues, sanctions and
+anti-money-laundering intelligence, supply-chain risk, aviation/maritime
+chokepoints, disaster overlays, insider/AI risk, and a grounded analyst chat.
 
 ```
-═══════════════════════════════════════════════════════════
-  UNCLASSIFIED // FOR OFFICIAL USE ONLY // HACKATHON DEMO
-═══════════════════════════════════════════════════════════
+UNCLASSIFIED // FOR OFFICIAL USE ONLY // HACKATHON DEMO
+All data is public open-source intelligence. No classified data is used.
 ```
 
----
+## Why It Matters
 
-## What SENTINEL is
+Military digital defense is not only a CVE problem. A real command staff has
+to reason across cyber exploitation, adversary attribution, sanctions,
+financial flows, logistics chokepoints, disasters, air and maritime movement,
+and visual geospatial context.
 
-SENTINEL is a real-time, multi-agency cyber threat fusion command center built for US Army decision-makers. It pulls real, public open-source intelligence from eleven sources simultaneously — CISA's Known Exploited Vulnerabilities catalog (DHS, 1,587 actively-exploited CVEs as of yesterday), MITRE ATT&CK Enterprise (189 APT groups, 858 techniques, 729 malware families, 56 campaigns), abuse.ch ThreatFox (2,003 live malware indicators from the last 7 days), US Treasury OFAC's Specially Designated Nationals list (18,927 sanctioned entities), State Department Rewards for Justice ($55M in active bounties on indicted nation-state hackers), FBI Cyber Most Wanted, DoJ indictment data, NIST's NVD vulnerability database, FIRST EPSS exploit-prediction scores, NSA cybersecurity advisories, and DoD's DC3 — and fuses them into a single 3D globe that visualizes adversary attack flows from China, Russia, Iran, and North Korea to real US targets like the Pentagon, NSA Fort Meade, USCYBERCOM, and the defense industrial base. A commander can click a country to see attributed APT groups, click an APT group for its full MITRE technique chain plus linked CVEs and live IOCs, run a "Live Scan" that hits GreyNoise, Shodan, VirusTotal, AbuseIPDB, and NVD in parallel against any IP/domain/CVE, view "Our Exposure" showing which DoD-stack vendors (Microsoft, Cisco, VMware, Palo Alto, Ivanti) have the most active exploits and need hardening first, trace funding flows showing how Lazarus Group's crypto theft funds DPRK's nuclear program, generate an AI-synthesized commander's briefing in BLUF format, and ask a grounded analyst chatbot questions in plain English. The point is to compress what currently takes a Joint Cyber Center fusion cell hours of cross-agency manual work into a single sub-second view, so commanders can act faster than the adversary can move.
+SENTINEL compresses those separate workflows into one place:
 
-## SENTINEL, explained to a kid
+- **Global monitor**: WorldMonitor-style 3D globe with operational layers.
+- **Decision deck**: scored, ranked courses of action with evidence.
+- **Cyber security**: CISA KEV, MITRE ATT&CK, abuse.ch IOCs, NVD, EPSS.
+- **Fraud + AML**: OFAC sanctions, FBI/State wanted actors, public funding links.
+- **Satellite + imagery**: NASA EONET, NASA GIBS, USGS, NOAA, Copernicus pivots.
+- **Supply chain**: DoD/Army vendor stack ranked against exploited CVEs.
+- **Air/sea**: chokepoints, route disruption, and public air-track context.
+- **Insider + AI**: behavioral risk scoring over real labeled datasets.
 
-Imagine the bad guys on the internet are like burglars sneaking around different houses. Right now, every police officer, FBI agent, and security guard has their own little notebook of which burglars they've seen, what tools they use, and who pays them — but nobody shares notebooks, so it takes a long time to figure out who's attacking what. SENTINEL is like a giant glowing globe on a wall that takes ALL those notebooks from the FBI, the army, the treasury people who track money, and many more, and puts everything together in one place. It shows little red dots on the map for the countries where the cyber-burglars live, draws glowing lines to show which houses they're trying to break into, lists the tools they've been caught using, and even tells you how much reward money the government is offering to catch them. You can ask it questions like "who's the worst burglar from North Korea?" and a computer-friend will tell you the answer with real proof. It also looks at our own house and says "hey, your front door lock is broken — fix that first!" — that way grown-ups protecting the country can stop the burglars before they get inside.
+## Command Decision Model
 
----
+The dashboard does not only show random feeds. It produces decision products.
+Each decision card includes:
 
-## The pitch in one sentence
+- **Score**: 0-100 operational priority.
+- **Band**: `ACT NOW`, `PRIORITIZE`, `WATCH`, or `MONITOR`.
+- **Confidence**: how strongly the public evidence supports the assessment.
+- **Components**: mission impact, urgency, and actionability.
+- **Recommended COA**: a concrete next action.
+- **Owner**: the staff section or team that should act.
+- **Time to action**: immediate, today, 24-72h, etc.
+- **Evidence**: source-backed facts used in the score.
+- **Sources**: CISA, MITRE, OFAC, FBI, NASA, USGS, NOAA, and others.
 
-DoD treats external cyber threat, insider threat, vulnerability management, sanctions intel, and adversary attribution as **five separate problems handled by five separate teams in five separate tools**. SENTINEL fuses them into one click-driven command center so a commander can answer the question *"who is attacking us, with what, from where, paid by whom, and where are we exposed?"* in under five seconds.
+Example decision products:
 
----
+- Patch Microsoft before next mission window.
+- Prioritize DPRK crypto-theft and sanctions watch.
+- Watch Black Sea / Ukraine convergence for cyber spillover.
+- Protect Suez / Red Sea logistics assumptions.
+- Review imagery for live NASA/USGS/NOAA geospatial events.
 
-## What it does (real demo flow, 3 minutes)
+## 3D Map Experience
 
-| Step | Click | What you see |
-|---|---|---|
-| 1 | _open the page_ | 3D globe spins. 8 stat-buttons populate from real agency data: 1,587 CISA-tracked exploited CVEs · 189 MITRE APT groups · 18,927 OFAC sanctions · $55M in active State Dept bounties. |
-| 2 | **OUR EXPOSURE** | DoD/Army stack (Microsoft, Cisco, VMware, Palo Alto, Ivanti, Citrix, Fortinet…) ranked by active-exploit count. Microsoft: 370 active CVEs, 103 ransomware-used → CRITICAL. *This tells commanders where to harden first.* |
-| 3 | **WANTED + BOUNTIES** | Park Jin Hyok ($5M, Lazarus, DoJ 2018 — Sony/WannaCry/Bangladesh Bank). Maksim Yakubets ($5M, Evil Corp, FSB ties). Real public data from FBI Cyber Most Wanted + State Dept Rewards for Justice. |
-| 4 | **MONEY / FUNDING FLOW** | `Lazarus Group ━ via crypto theft ━▶ DPRK weapons program` (HIGH confidence, Treasury 2024 attribution). Open-source linkages from DoJ + OFAC. |
-| 5 | type `kim jong` → **QUERY ALL AGENCIES** | 5 OFAC SDN matches: Kim Jong Un (DPRK3), Kim Yo Jong (DPRK2), and others — pulled live from US Treasury. |
-| 6 | type `8.8.8.8` → **⚡ LIVE SCAN** | Real-time fan-out to GreyNoise, AbuseIPDB, Shodan, VirusTotal, OTX, IPinfo, Pulsedive, abuse.ch in parallel. |
-| 7 | **◆ ANALYST CHAT** | Slide-in chatbot. Ask "what's our top exposure?" — Claude grounded in live CISA + MITRE + OFAC + DoD-stack context. |
+The first screen is a 3D globe with operational layers:
 
----
+- Cyber arcs
+- Strategic hotspots
+- Disasters
+- Satellite/imagery events
+- Air tracks
+- AML/sanctions
+- Command targets
+- Labels
 
-## Open-source intelligence sources (all real)
+Map behavior:
 
-| Agency | Feed | What it gives us |
-|---|---|---|
-| **CISA (DHS)** | Known Exploited Vulnerabilities catalog | 1,587 actively-exploited CVEs, 317 ransomware-flagged |
-| **NIST** | National Vulnerability Database (live API) | CVE master record, CVSS, CPE bindings |
-| **MITRE** | ATT&CK Enterprise STIX 2.1 | 189 APT groups, 858 techniques, 729 malware families, 56 named campaigns |
-| **FIRST** | EPSS (live API) | Exploit-prediction scores |
-| **US Treasury OFAC** | SDN list (CSV) | 18,927 sanctioned entities, 24,696 addresses, 20,273 aliases |
-| **State Dept** | Rewards for Justice | $55M outstanding bounties on indicted nation-state operators |
-| **FBI** | Cyber Most Wanted | Curated bounties on indicted state actors |
-| **DoJ** | Indictments + press releases | Attribution evidence for nation-state operators |
-| **NSA** | Cybersecurity Advisories | DoD/IC technical advisories |
-| **DC3** | DoD Cyber Crime Center | DoD-specific advisories |
-| **abuse.ch** | ThreatFox + URLhaus + Feodo + SSLBL | 2,003 live malware IOCs from the last 7 days |
-| **Spamhaus / DShield / PhishTank** | Blocklists | 1,642+ high-confidence reputation IOCs |
+- `+` and `-` zoom the globe.
+- Manual drag/orbit or zoom stops auto-rotation.
+- Hovering over map elements shows values: score, severity, source, magnitude,
+  altitude, group count, and rationale.
+- Clicking any marker opens the right-side dossier.
+- Clicking empty globe coordinates opens a coordinate decision dossier with
+  nearest hotspots, nearest mission assets, imagery pivots, and score.
 
-For live external scanning the engine fans out to **GreyNoise · AbuseIPDB · Shodan · VirusTotal · AlienVault OTX · IPinfo · Pulsedive · NVD · EPSS · abuse.ch** in parallel.
+## Satellite And Imagery
 
----
+The satellite page uses public geospatial feeds and imagery sources:
+
+- **NASA EONET**: live natural event geometry such as wildfires and storms.
+- **NASA GIBS**: public global imagery layers such as true color and thermal anomalies.
+- **USGS Earthquake Hazards**: live M4.5+ earthquake GeoJSON.
+- **USGS LandsatLook**: open high-resolution imagery viewer.
+- **Copernicus Browser**: Sentinel-2 imagery for ports, routes, burn scars, floods.
+- **NOAA/NWS Alerts**: live weather warning polygons.
+
+Imagery appears in three places:
+
+- The 3D map satellite/disaster layers.
+- The Satellite + Imagery page metrics and live event list.
+- Imagery decision cards that recommend when to review NASA GIBS, LandsatLook,
+  or Copernicus around a live event or mission area.
+
+## Trusted Data Sources
+
+| Domain | Sources |
+|---|---|
+| Cyber exploitation | CISA Known Exploited Vulnerabilities, NIST NVD, FIRST EPSS |
+| Threat actors | MITRE ATT&CK Enterprise, public CISA/FBI/DoJ attribution |
+| Malware IOCs | abuse.ch ThreatFox, URLhaus, Feodo, SSLBL, Spamhaus, DShield, PhishTank |
+| Sanctions / AML | US Treasury OFAC SDN, FBI Cyber Most Wanted, State Dept Rewards for Justice, DoJ press releases |
+| Satellite / imagery | NASA EONET, NASA GIBS, USGS Earthquake Hazards, USGS LandsatLook, Copernicus Browser, NOAA/NWS |
+| Behavioral risk | NSL-KDD, CTU-13, optional CIC-IDS and CERT Insider Threat datasets |
+| Live scan enrichment | GreyNoise, AbuseIPDB, Shodan, VirusTotal, AlienVault OTX, IPinfo, Pulsedive, NVD, EPSS |
+
+All sources are public or free-tier. API-key sources are optional; the demo
+still works with cached/public feeds.
+
+## Demo Flow
+
+Open:
+
+```bash
+http://127.0.0.1:8000/
+```
+
+Suggested 3-minute judge flow:
+
+1. **Global Monitor**
+   - Show the command decision deck.
+   - Explain that SENTINEL ranks actions instead of dumping feeds.
+
+2. **3D Map Layers**
+   - Toggle Cyber, Strategic Hotspots, Satellite/Imagery, AML/Sanctions.
+   - Hover a marker to show score/severity/source.
+   - Click an empty coordinate to generate a coordinate dossier.
+
+3. **Cyber Security**
+   - Show top decision score.
+   - Open exposure: Microsoft, Cisco, VMware, Palo Alto, Ivanti ranked by CISA KEV.
+   - Show recent CVEs and live IOC sample.
+
+4. **Fraud + AML**
+   - Show OFAC totals, wanted actors, bounty totals, and public funding links.
+   - Pivot to DPRK / Lazarus crypto-theft risk.
+
+5. **Satellite + Imagery**
+   - Show NASA/USGS/NOAA live geospatial events.
+   - Open imagery layer cards for NASA GIBS, USGS LandsatLook, Copernicus.
+   - Explain how imagery becomes a decision cue, not decoration.
+
+6. **Analyst Chat / Briefing**
+   - Ask: `what should we prioritize first?`
+   - Generate BLUF-style commander briefing.
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                              SENTINEL UI                             │
-│   3D Globe (globe.gl)  ·  6 dossier tabs  ·  Analyst chat drawer    │
-└────────────────────────────┬─────────────────────────────────────────┘
-                             │  REST + WebSocket
-┌────────────────────────────▼─────────────────────────────────────────┐
-│                          FastAPI Server                              │
-│   /intel/*   /sanctions/*   /exposure   /globe/arcs                  │
-│   /live/scan   /live/cve/recent   /live/iocs/refresh   /chat         │
-└────┬───────────┬──────────────┬─────────────────┬───────────┬────────┘
-     │           │              │                 │           │
-┌────▼───┐ ┌─────▼────┐ ┌───────▼────────┐ ┌──────▼─────┐ ┌───▼─────┐
-│ Intel  │ │Sanctions │ │ Exposure (DoD  │ │ Live API   │ │ Chat    │
-│ Fusion │ │  Index   │ │  stack × KEV)  │ │ fan-out    │ │ (Claude │
-│ MITRE  │ │ OFAC SDN │ │                │ │ Greynoise/ │ │ + RAG)  │
-│ + KEV  │ │ + Wanted │ │                │ │ Shodan/VT/ │ │         │
-│ + IOCs │ │ + DoJ    │ │                │ │ NVD/EPSS   │ │         │
-└────┬───┘ └────┬─────┘ └────────┬───────┘ └──────┬─────┘ └─────────┘
-     │          │                │                │
-     ▼          ▼                ▼                ▼
-   data/     data/           CISA KEV         live HTTP
-   mitre/    sanctions/      ∩ DoD vendors    to 10+ APIs
-   feeds/                    stack
-```
-
-A second pillar — the **unified behavioral risk engine** — fits the same feature space across NSL-KDD network connections (real labeled DoS/Probe/R2L/U2R) and (when downloaded) CERT Insider Threat user behavior, scoring both with one IsolationForest + per-entity z-score + supervised XGBoost ensemble. That's the *"banking solved cyber+insider with one model 10 years ago"* pitch and it lives in `core/scorer.py`.
-
----
-
-## Quickstart
-
-Everything runs locally. No managed services, no paid tiers required to get a working demo.
-
-```bash
-# 1. clone
-git clone https://github.com/Dhrumilshah77/sentinel.git
-cd sentinel
-
-# 2. clone source repos (Sigma, MITRE CTI, OpenCTI, ModelScan)
-./bootstrap.sh
-
-# 3. Python env
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# 4. pull real data — agency feeds + datasets (no auth required)
-python feeds/pull_open_feeds.py    # 9 IOC feeds → data/feeds/
-python mitre/pull_attack.py        # MITRE ATT&CK → data/mitre/
-./datasets/download.sh             # NSL-KDD + CTU-13 + CISA KEV
-
-# 5. (optional) keys for full power
-cp .env.example .env
-# edit and add: ANTHROPIC_API_KEY, ABUSECH_KEY, SHODAN_KEY, etc.
-
-# 6. run
-uvicorn api.server:app --host 127.0.0.1 --port 8000
+```text
+SENTINEL UI
+  3D globe, layer controls, decision deck, dossiers, analyst chat
+       |
+       | REST + WebSocket
+       v
+FastAPI server
+  /monitor/global       global decision deck and map layers
+  /monitor/satellite    satellite/imagery events and decision cues
+  /monitor/geo          clicked-coordinate decision dossier
+  /mission/*            mission pages and hotspots
+  /intel/*              MITRE, CISA, IOC search and actor dossiers
+  /sanctions/*          OFAC, wanted actors, funding links
+  /exposure             DoD-stack vendor exposure
+  /live/scan            defensive OSINT enrichment
+  /chat                 grounded analyst assistant
+       |
+       v
+Core engines
+  monitor.py            command decision model and geo scoring
+  mission.py            mission-domain catalog and page payloads
+  intel.py              CISA KEV + MITRE ATT&CK + IOCs
+  sanctions.py          OFAC + FBI/State/DoJ curated public intelligence
+  exposure.py           DoD vendor stack x CISA KEV
+  scorer.py             behavioral anomaly and supervised risk engine
 ```
 
-Open **http://127.0.0.1:8000/** and the globe is yours.
+## Repository Layout
 
----
-
-## Repo layout
-
-```
+```text
 sentinel/
-├── api/server.py             FastAPI: /intel /sanctions /exposure /live /chat /globe/arcs
+├── api/server.py             FastAPI application and endpoints
 ├── core/
-│   ├── intel.py              MITRE STIX + CISA KEV + IOC fusion
-│   ├── sanctions.py          OFAC SDN + curated FBI/State Dept Wanted + funding links
-│   ├── exposure.py           DoD vendor stack × CISA KEV → "where to harden"
-│   ├── live.py               Real-time fan-out to 10+ external APIs
-│   ├── chat.py               Claude analyst with RAG over all sources
-│   ├── scorer.py             Behavioral risk engine (IForest + z + XGBoost)
-│   ├── features.py           Unified feature space across network/login/file/model events
-│   ├── loaders.py            NSL-KDD / CTU-13 / CIC-IDS / CERT loaders
-│   ├── enrich.py             MITRE ATT&CK alert mapping + IOC matching
-│   └── explain.py            Heuristic + LLM rationale for alerts
-├── ui/index.html             3D globe + click-driven dossiers + chatbot drawer
-├── feeds/pull_open_feeds.py  abuse.ch / Spamhaus / DShield / PhishTank pullers
-├── mitre/pull_attack.py      MITRE ATT&CK STIX pull → flat techniques.csv
-├── datasets/download.sh      NSL-KDD / CTU-13 / CISA KEV downloader
-├── bootstrap.sh              Project bootstrap + repo clones
+│   ├── monitor.py            global monitor, decision deck, geo scoring, imagery cues
+│   ├── mission.py            mission pages, trusted sources, hotspots
+│   ├── intel.py              CISA KEV + MITRE ATT&CK + IOC fusion
+│   ├── sanctions.py          OFAC SDN + wanted actors + funding links
+│   ├── exposure.py           DoD/Army vendor stack exposure scoring
+│   ├── live.py               live defensive OSINT scan fan-out
+│   ├── scorer.py             behavioral risk scoring
+│   ├── loaders.py            NSL-KDD, CTU-13, CIC-IDS, CERT loaders
+│   └── chat.py               grounded analyst chat
+├── ui/index.html             no-build frontend with globe.gl / Three.js
+├── feeds/pull_open_feeds.py  abuse.ch, Spamhaus, DShield, PhishTank pullers
+├── mitre/pull_attack.py      MITRE ATT&CK STIX puller
+├── datasets/download.sh      NSL-KDD, CTU-13, CISA KEV downloader
+├── bootstrap.sh              optional project bootstrap
 ├── requirements.txt
-├── .env.example
 └── README.md
 ```
 
----
+## Quickstart
 
-## Tech stack
+```bash
+git clone https://github.com/Dhrumilshah77/sentinel.git
+cd sentinel
 
-- **Backend** — Python 3 · FastAPI · uvicorn · scikit-learn · XGBoost · stix2
-- **Frontend** — Vanilla JS · globe.gl (Three.js) · IBM Plex Mono — single HTML file, no build step
-- **AI** — Anthropic Claude (Haiku 4.5) for grounded briefing + analyst chat
-- **Data fusion** — Custom multi-source aggregator with cached pulls + live API fan-out
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
----
+# Pull public feeds and datasets if they are not already present.
+python feeds/pull_open_feeds.py
+python mitre/pull_attack.py
+./datasets/download.sh
 
-## Hackathon judging alignment
+uvicorn api.server:app --host 127.0.0.1 --port 8000
+```
 
-| Criterion | How SENTINEL scores |
+Then open:
+
+```text
+http://127.0.0.1:8000/
+```
+
+Notes:
+
+- The first server boot fits the local behavioral model and can take about a minute.
+- Optional API keys can be placed in `.env` for Shodan, VirusTotal, OTX, etc.
+- Never commit `.env` or API keys.
+
+## Key Endpoints
+
+```text
+GET  /monitor/global?live=true        Decision deck + global map layers
+GET  /monitor/satellite               Satellite/imagery decision cues
+GET  /monitor/geo?lat=...&lng=...     Clicked-coordinate decision dossier
+GET  /mission/summary                 Mission pages and source catalog
+GET  /mission/module/{id}             Cyber, AML, sanctions, supply chain, etc.
+GET  /mission/hotspot/{id}            Hotspot dossier
+GET  /intel/summary                   Cyber source summary
+GET  /intel/search?q=...              Search CISA/MITRE/IOCs
+GET  /sanctions/search?q=...          Search OFAC/wanted actors
+GET  /exposure                        DoD vendor exposure ranking
+GET  /live/scan?q=...                 Defensive OSINT enrichment
+POST /intel/briefing                  Commander BLUF
+POST /chat                            Analyst chat
+```
+
+## Safety Boundaries
+
+SENTINEL is defensive and analytical:
+
+- It enriches indicators through public OSINT.
+- It ranks exposure and recommends hardening actions.
+- It does not automate intrusion, exploitation, credential theft, malware,
+  persistence, or access to third-party systems.
+- Live scan should be used only for owned or authorized indicators.
+
+## Judging Alignment
+
+| Criterion | SENTINEL Evidence |
 |---|---|
-| **Technical Demo (35%)** | Real data from 11 agencies, 100% TP / 0% FP on NSL-KDD held-out, live API fan-out to 10+ sources, 3D globe with attribution arcs, grounded LLM chat |
-| **Military Impact (30%)** | Direct mapping to PS4 (Digital Defense). Replaces the Joint Cyber Center fusion-cell process. "Our Exposure" view is what an Army G-6 needs every morning. |
-| **Solution Creativity (25%)** | Nobody else fuses cyber + sanctions + financial flow + adversary attribution + defensive posture in one tool. The unified behavioral engine (cyber + insider in one feature space) is genuinely novel. |
-| **Presentation (10%)** | Click-driven, no scrolling SOC noise. Globe + briefing + chat = three different "wow" moments in 3 minutes. |
+| Technical Demo | Real data ingestion, 3D globe layers, decision deck, coordinate scoring, live public APIs, analyst chat |
+| Military Impact | Compresses cyber, sanctions, imagery, logistics, and disaster awareness into command decisions |
+| Creativity | Blends WorldMonitor-style global monitoring with cyber fusion and mission scoring |
+| Presentation | Click-driven flow: global score, map layer, hotspot, coordinate dossier, action |
 
----
+## Current Limitations
 
-## Disclaimers
-
-- All data sources are **publicly available open-source intelligence**. SENTINEL ingests, indexes, and visualizes; it does not classify, transmit, or distribute classified material.
-- The "UNCLASSIFIED // FOUO" banner is decorative for the demo — this is a hackathon prototype, not an accredited DoD system.
-- Curated lists (`WANTED`, `FUNDING_LINKS` in `core/sanctions.py`) are direct transcriptions of public US government attribution from FBI Cyber Most Wanted, State Dept Rewards for Justice, DoJ press releases, and Treasury OFAC press releases. Each entry cites its source.
-- Attribution mappings (`APT_ATTRIBUTION` in `core/intel.py`) are based on public attribution from CISA, FBI, DoJ indictments, US-CERT, Mandiant, CrowdStrike, and Microsoft Threat Intelligence — not classified intelligence.
-
----
+- This is a hackathon prototype, not an accredited DoD system.
+- Imagery sources are public viewers/tile services, not classified imagery.
+- Some live APIs are best-effort and may fail on venue Wi-Fi.
+- External paid/free-tier API keys improve enrichment but are optional.
 
 ## License
 
-MIT — built in the open for the National Security Hackathon. Use it, fork it, ship it.
+MIT.
 
 ## Credits
 
-Built by **Dhrumil Shah** for the [3rd Annual National Security Hackathon](https://cerebralvalley.ai/e/3rd-annual-natsec-hackathon), San Francisco, May 2-3 2026, sponsored by the United States Army.
+Built by Dhrumil Shah for the 3rd Annual National Security Hackathon, San
+Francisco, May 2026, sponsored by the United States Army.
 
-Open-source feeds remain the property of their respective agencies — SENTINEL is a fusion layer.
+Public-source feeds remain the property of their original agencies and
+maintainers. SENTINEL is a fusion, scoring, and decision-support layer.

@@ -24,6 +24,8 @@ from core.sanctions import SanctionsIndex, WANTED, FUNDING_LINKS
 from core.exposure  import ExposureIndex
 from core.live      import scan as live_scan, nvd_recent, classify
 from core.chat      import Chat
+from core.mission   import mission_summary, mission_module, mission_hotspot
+from core.monitor   import global_monitor, satellite_monitor, geo_dossier
 from core.loaders import (
     load_nsl_kdd, load_ctu13, load_threatfox_recent,
     load_cicids, load_cert,
@@ -254,6 +256,40 @@ async def health():
         "sources": ENGINE.sources_used,
         "malicious_pool": len(ENGINE.malicious_pool),
     }
+
+# ---------------------------------------------------------------------------
+# Mission command dashboard — one-click cross-domain panels
+# ---------------------------------------------------------------------------
+
+@app.get("/mission/summary")
+async def mission_summary_endpoint():
+    return mission_summary(INTEL, SANCTIONS, EXPOSURE)
+
+@app.get("/mission/module/{module_id}")
+async def mission_module_endpoint(module_id: str):
+    res = mission_module(module_id, INTEL, SANCTIONS, EXPOSURE)
+    if not res:
+        return JSONResponse({"error": "unknown mission module"}, status_code=404)
+    return res
+
+@app.get("/mission/hotspot/{hotspot_id}")
+async def mission_hotspot_endpoint(hotspot_id: str):
+    res = mission_hotspot(hotspot_id, INTEL, SANCTIONS, EXPOSURE)
+    if not res:
+        return JSONResponse({"error": "unknown hotspot"}, status_code=404)
+    return res
+
+@app.get("/monitor/global")
+def monitor_global_endpoint(live: bool = True):
+    return global_monitor(INTEL, SANCTIONS, EXPOSURE, include_live=live)
+
+@app.get("/monitor/satellite")
+def monitor_satellite_endpoint():
+    return satellite_monitor()
+
+@app.get("/monitor/geo")
+def monitor_geo_endpoint(lat: float, lng: float):
+    return geo_dossier(lat, lng, INTEL, SANCTIONS, EXPOSURE)
 
 @app.post("/inject/{kind}")
 async def inject(kind: str):
