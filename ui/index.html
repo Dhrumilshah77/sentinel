@@ -298,6 +298,11 @@
   .reason { margin-top:7px; padding:7px 8px; background:#070b10; border:1px dashed #253244;
     border-radius:4px; color:#9aa6b2; line-height:1.45; }
   .risk-note { border-left:3px solid var(--crit); }
+  .mode-matrix { display:grid; grid-template-columns:repeat(4, 1fr); gap:7px; margin:8px 0; }
+  .mode-cell { border:1px solid var(--line); background:#070b10; border-radius:4px; padding:8px; min-height:96px; }
+  .mode-cell.active { border-color:var(--accent); box-shadow:inset 0 0 0 1px rgba(95,180,255,.35); }
+  .mode-cell h4 { margin:0 0 5px; color:var(--accent); font-size:10px; letter-spacing:1.4px; text-transform:uppercase; }
+  .mode-cell .small { line-height:1.45; }
   .intel-table { display:grid; gap:6px; }
   .intel-row { display:grid; grid-template-columns: 118px 1fr; gap:8px; padding:7px 8px;
     border:1px solid var(--line); background:#070b10; border-radius:4px; }
@@ -591,13 +596,16 @@ async function setDataMode(mode) {
   else {
     GLOBAL = await fetch('/monitor/global?live=false').then(r=>r.json());
     GLOBAL._mode = mode;
-    renderGlobalMetrics(GLOBAL.metrics || []);
+    renderGlobalMetrics(CURRENT_DATA && CURRENT_DATA._kind === 'mission' ? moduleHeaderMetrics(CURRENT_DATA) : GLOBAL.metrics || []);
     renderLiveStream();
     if (CURRENT_DATA && CURRENT_DATA._kind === 'global') {
       CURRENT_DATA = { _kind:'global', ...GLOBAL };
       renderMapMarkers(null, globalExtraMarkers());
       renderTab();
     } else if (CURRENT_DATA && CURRENT_DATA._kind === 'mission') {
+      renderTab();
+    } else if (CURRENT_DATA && CURRENT_DATA._kind === 'satellite') {
+      renderGlobalMetrics(satelliteHeaderMetrics(CURRENT_DATA));
       renderTab();
     }
   }
@@ -668,31 +676,37 @@ function renderGlobalMetrics(metrics) {
 function liveSignalItems() {
   const live = ((GLOBAL||{}).live)||{};
   const items = [];
-  (((live.map_events)||[]).slice(0,8)).forEach(e => items.push({
+  const scoped = CURRENT_PAGE && CURRENT_PAGE !== 'global';
+  const keys = MODULE_LIVE_KEYWORDS[CURRENT_PAGE] || [];
+  const scopedEvents = scoped ? moduleExtraMarkers(CURRENT_PAGE).filter(e => e._event || e.source || e.kind).slice(0,8) : (live.map_events || []).slice(0,8);
+  scopedEvents.forEach(e => items.push({
     tag:e.source || 'GEO',
     text:`${e.kind || 'event'}: ${e.name || 'live event'} ${e.severity ? '(' + e.severity + ')' : ''}`,
   }));
-  ((((live.signals||{}).gdelt_articles||{}).items||[]).slice(0,8)).forEach(a => items.push({
+  ((((live.signals||{}).gdelt_articles||{}).items||[])
+    .filter(a => !scoped || !keys.length || keys.some(k => `${a.title||''} ${a.domain||''} ${a.sourceCountry||''}`.toLowerCase().includes(k)))
+    .slice(0,8)).forEach(a => items.push({
     tag:'GDELT',
     text:a.title || 'live media intelligence signal',
   }));
-  ((((live.signals||{}).opensky_aircraft||{}).items||[]).slice(0,6)).forEach(a => items.push({
+  if (!scoped || CURRENT_PAGE === 'aviation_maritime') ((((live.signals||{}).opensky_aircraft||{}).items||[]).slice(0,6)).forEach(a => items.push({
     tag:'AIR',
     text:`${a.callsign || a.icao24 || 'aircraft'} ${a.origin_country || ''} alt ${a.altitude_m || 'n/a'}m`,
   }));
-  ((((live.signals||{}).worldmonitor_bootstrap||{}).items||[]).slice(0,6)).forEach(k => items.push({
+  if (!scoped) ((((live.signals||{}).worldmonitor_bootstrap||{}).items||[]).slice(0,6)).forEach(k => items.push({
     tag:'KOALA',
     text:`WorldMonitor source pattern: ${k}`,
   }));
-  ((((live.signals||{}).worldmonitor_risk||{}).items||[]).slice(0,6)).forEach(r => items.push({
+  if (!scoped) ((((live.signals||{}).worldmonitor_risk||{}).items||[]).slice(0,6)).forEach(r => items.push({
     tag:'MODEL',
     text:`${r.region || 'region'} risk ${r.combinedScore ?? r.score ?? 'n/a'} trend ${r.trend || 'n/a'}`,
   }));
-  Object.entries(((live.signals||{}).crypto_market||{}).items || {}).slice(0,6).forEach(([coin, v]) => items.push({
+  if (!scoped || ['aml_finance','sanctions'].includes(CURRENT_PAGE)) Object.entries(((live.signals||{}).crypto_market||{}).items || {}).slice(0,6).forEach(([coin, v]) => items.push({
     tag:'CRYPTO',
     text:`${coin} $${v.usd ?? 'n/a'} · 24h ${Number(v.usd_24h_change || 0).toFixed(2)}% · AML exposure cue`,
   }));
-  (((GLOBAL||{}).decision_deck)||[]).slice(0,5).forEach(d => items.push({
+  const deck = scoped && CURRENT_DATA && CURRENT_DATA._kind === 'mission' ? [CURRENT_DATA.decision].filter(Boolean) : (((GLOBAL||{}).decision_deck)||[]).slice(0,5);
+  deck.forEach(d => items.push({
     tag:d.band || 'RISK',
     text:`${d.score || ''} ${d.title || 'decision score'}`,
   }));
@@ -726,6 +740,14 @@ async function refreshGlobalLive(force=false) {
       CURRENT_DATA = { _kind:'global', ...live };
       renderMapMarkers(null, globalExtraMarkers());
       renderTab();
+    } else if (CURRENT_DATA && CURRENT_DATA._kind === 'mission') {
+      renderGlobalMetrics(moduleHeaderMetrics(CURRENT_DATA));
+      renderMapMarkers(CURRENT_DATA.id, moduleExtraMarkers(CURRENT_DATA.id));
+      renderTab();
+    } else if (CURRENT_DATA && CURRENT_DATA._kind === 'satellite') {
+      renderGlobalMetrics(satelliteHeaderMetrics(CURRENT_DATA));
+      renderMapMarkers('satellite_imagery', satelliteExtraMarkers());
+      renderTab();
     }
   } catch (e) {
     console.warn('live global refresh failed', e);
@@ -752,6 +774,7 @@ async function openPage(id, push=true) {
   if (id === 'satellite_imagery') {
     SATELLITE = await fetch('/monitor/satellite').then(r=>r.json());
     CURRENT_DATA = { _kind:'satellite', ...SATELLITE };
+    renderGlobalMetrics(satelliteHeaderMetrics(CURRENT_DATA));
     renderMapMarkers('satellite_imagery', satelliteExtraMarkers());
     flyToPage(id);
     switchTab('mission'); renderTab();
@@ -1249,13 +1272,15 @@ async function loadView(kind) {
 async function loadMission(moduleId, push=true) {
   CURRENT_PAGE = moduleId;
   if (push) syncHash(moduleId);
-  await hydrateGlobalForNavigation();
   const j = await fetch('/mission/module/'+encodeURIComponent(moduleId)).then(r=>r.json());
   CURRENT_DATA = { _kind:'mission', ...j };
+  renderGlobalMetrics(moduleHeaderMetrics(CURRENT_DATA));
+  renderLiveStream();
   renderMapMarkers(moduleId, moduleExtraMarkers(moduleId));
   renderPageTabs(moduleId);
   flyToPage(moduleId);
   switchTab('mission'); renderTab();
+  if (DATA_MODE === 'live') refreshGlobalLive(true);
 }
 
 async function loadHotspot(hotspotId) {
@@ -1350,6 +1375,26 @@ function metricCards(metrics) {
       <span class="v">${escapeHtml(m.value)}</span>
       <span class="l">${escapeHtml(m.label)}</span>
     </div>`).join('')}</div>`;
+}
+
+function moduleHeaderMetrics(d) {
+  const metrics = (d.metrics || []).slice(0,6).map(m => ({...m, source:m.source || d.label || 'module metric'}));
+  metrics.push(
+    { label:'Data Mode', value:DATA_MODE.toUpperCase(), tone:DATA_MODE === 'live' ? 'ok' : DATA_MODE === 'historic' ? 'gold' : 'warn', source:dataModeSummary() },
+    { label:'Sources', value:(d.sources_detail || []).length, tone:'ok', source:'trusted sources scoped to this module' },
+    { label:'Hotspots', value:(d.hotspots || []).length, tone:'warn', source:'map markers filtered to this module' }
+  );
+  return metrics;
+}
+
+function satelliteHeaderMetrics(d) {
+  const metrics = (d.metrics || []).slice(0,6).map(m => ({...m, source:m.source || 'satellite imagery module'}));
+  metrics.push(
+    { label:'Data Mode', value:DATA_MODE.toUpperCase(), tone:DATA_MODE === 'live' ? 'ok' : DATA_MODE === 'historic' ? 'gold' : 'warn', source:dataModeSummary() },
+    { label:'Layers', value:(d.layers || []).length, tone:'ok', source:'NASA/USGS/Copernicus open imagery layers' },
+    { label:'Events', value:(d.events || []).length, tone:'warn', source:'live geospatial events when Live mode is enabled' }
+  );
+  return metrics;
 }
 
 function sourcePills(sources) {
@@ -1515,6 +1560,99 @@ function expansionPanel(expansion) {
   `;
 }
 
+function moduleModeDashboard(d) {
+  const expansion = d.page_expansion || {};
+  const dd = d.deep_dive || {};
+  const checks = (expansion.minute_checks || []).slice(0,7).map(row => `
+    <div class="intel-row">
+      <div class="k">${escapeHtml(row.check)}</div>
+      <div><strong>${escapeHtml(row.fields)}</strong><div class="desc">${escapeHtml(row.decision)}</div></div>
+    </div>`).join('');
+  const history = (dd.history || []).slice(0,6).map(h => `
+    <div class="intel-row">
+      <div class="k">${escapeHtml(h.period)}</div>
+      <div><strong>${escapeHtml(h.case)}</strong><div class="desc">${escapeHtml(h.lesson)}</div></div>
+    </div>`).join('');
+  const outputs = (expansion.operator_outputs || dd.workflows || []).slice(0,6)
+    .map(x => `<div class="small">▸ ${escapeHtml(x)}</div>`).join('');
+  const live = ((GLOBAL||{}).live)||{};
+  const signals = live.signals || {};
+  const status = [
+    ['GDELT', (signals.gdelt_articles||{}).status || 'pending'],
+    ['NASA', (signals.nasa_eonet||{}).status || 'pending'],
+    ['USGS', (signals.usgs_earthquakes||{}).status || 'pending'],
+    ['NOAA', (signals.noaa_alerts||{}).status || 'pending'],
+    ['OpenSky', (signals.opensky_aircraft||{}).status || 'pending'],
+    ['CoinGecko', (signals.crypto_market||{}).status || 'pending'],
+  ].map(([name, st]) => `<span class="badge">${escapeHtml(name)} ${escapeHtml(st)}</span>`).join(' ');
+  const sourceList = (d.sources_detail||[]).slice(0,8)
+    .map(s => `<div class="small">▸ <strong>${escapeHtml(s.name)}</strong> · ${escapeHtml(s.agency||'')} · ${escapeHtml(s.access||'public')}</div>`).join('');
+  return `
+    <h3>THIS PAGE ONLY · ${escapeHtml(d.label || PAGE_LABELS[d.id] || d.id)}</h3>
+    <div class="reason"><strong>Selected mode:</strong> ${escapeHtml(DATA_MODE.toUpperCase())} · ${escapeHtml(dataModeSummary())}</div>
+    <div class="mode-matrix">
+      <div class="mode-cell ${DATA_MODE === 'real' ? 'active' : ''}">
+        <h4>Real</h4>
+        <div class="small">Fast trusted datasets scoped to ${escapeHtml(d.label || d.id)}.</div>
+        <div class="small">Sources: ${(d.sources_detail||[]).length} · Hotspots: ${(d.hotspots||[]).length}</div>
+      </div>
+      <div class="mode-cell ${DATA_MODE === 'live' ? 'active' : ''}">
+        <h4>Live</h4>
+        <div class="small">Active public polling only. Navigation does not wait for it.</div>
+        <div style="margin-top:5px">${status}</div>
+      </div>
+      <div class="mode-cell ${DATA_MODE === 'historic' ? 'active' : ''}">
+        <h4>Historic Real</h4>
+        <div class="small">Prior cases, typologies, sanctions patterns, exploit history, and mission playbooks.</div>
+        <div class="small">Cases loaded: ${(dd.history||[]).length}</div>
+      </div>
+      <div class="mode-cell">
+        <h4>Action</h4>
+        <div class="small">Score, reason, owner, next action, report export, note, and email/share workflow.</div>
+        <div class="small">Outputs: ${(expansion.operator_outputs||[]).length || (dd.workflows||[]).length}</div>
+      </div>
+    </div>
+    <h3>REAL DATA FOR THIS MODULE</h3>
+    <div class="card">${sourceList || '<span class="hint">Source catalog unavailable.</span>'}</div>
+    <h3>FIELD-LEVEL CHECKS</h3>
+    <div class="intel-table">${checks || '<div class="hint">No field checks configured.</div>'}</div>
+    <h3>HISTORIC REAL PATTERNS</h3>
+    <div class="intel-table">${history || '<div class="hint">No historic cases configured.</div>'}</div>
+    <h3>OPERATOR OUTPUTS</h3>
+    <div class="card">${outputs || '<span class="hint">No outputs configured.</span>'}</div>
+  `;
+}
+
+function satelliteModeDashboard(d) {
+  const live = ((GLOBAL||{}).live)||{};
+  const signals = live.signals || {};
+  const layers = (d.layers || []).slice(0,8).map(l =>
+    `<div class="small">▸ <strong>${escapeHtml(l.name)}</strong> · ${escapeHtml(l.provider)} · ${escapeHtml(l.cadence)}</div>`
+  ).join('');
+  const events = (d.events || []).slice(0,8).map(e =>
+    `<div class="small">▸ <strong>${escapeHtml(e.name)}</strong> · ${escapeHtml(e.source)} · ${escapeHtml(e.kind)} · ${escapeHtml(e.severity||'')}</div>`
+  ).join('');
+  const historic = [
+    'Compare current public preview against LandsatLook / Copernicus previous scene.',
+    'Use thermal anomaly history for wildfire, explosion, industrial heat, or burn-scar cueing.',
+    'Use precipitation and flood history to estimate road, port, and route degradation.',
+    'Use strategic hotspot history to avoid over-interpreting one frame.',
+  ].map(x => `<div class="small">▸ ${escapeHtml(x)}</div>`).join('');
+  return `
+    <h3>SATELLITE PAGE ONLY · REAL / LIVE / HISTORIC</h3>
+    <div class="reason"><strong>Selected mode:</strong> ${escapeHtml(DATA_MODE.toUpperCase())} · ${escapeHtml(dataModeSummary())}</div>
+    <div class="mode-matrix">
+      <div class="mode-cell ${DATA_MODE === 'real' ? 'active' : ''}"><h4>Real</h4><div class="small">${(d.layers||[]).length} open imagery layers from NASA, USGS, and Copernicus.</div></div>
+      <div class="mode-cell ${DATA_MODE === 'live' ? 'active' : ''}"><h4>Live</h4><div class="small">NASA ${(signals.nasa_eonet||{}).status||'pending'} · USGS ${(signals.usgs_earthquakes||{}).status||'pending'} · NOAA ${(signals.noaa_alerts||{}).status||'pending'}</div></div>
+      <div class="mode-cell ${DATA_MODE === 'historic' ? 'active' : ''}"><h4>Historic Real</h4><div class="small">Before/after workflows, public scene history, thermal/flood/change cues.</div></div>
+      <div class="mode-cell"><h4>Action</h4><div class="small">Run imagery triage, focus map, download concise report, email/share finding.</div></div>
+    </div>
+    <h3>REAL IMAGERY LAYERS</h3><div class="card">${layers}</div>
+    <h3>LIVE GEO EVENT CUES</h3><div class="card">${events || '<span class="hint">Switch to Live or refresh if event feeds are quiet.</span>'}</div>
+    <h3>HISTORIC REVIEW WORKFLOWS</h3><div class="card">${historic}</div>
+  `;
+}
+
 function moduleLivePanel(moduleId) {
   const live = ((GLOBAL||{}).live)||{};
   const signals = live.signals || {};
@@ -1649,6 +1787,7 @@ function renderSatellite(d) {
     <h3>SATELLITE & IMAGERY</h3>
     <div class="desc">${escapeHtml(d.problem)}</div>
     ${metricCards(d.metrics)}
+    ${satelliteModeDashboard(d)}
     <div class="card" onclick="analyzeImagery(24.0,121.0)">
       <div class="title"><strong>Run Imagery Triage Demo</strong><span class="country">Taiwan Strait</span></div>
       <div class="desc">Public NASA image preview + scoring for thermal, weather, mobility, and strategic activity cues.</div>
@@ -1846,8 +1985,7 @@ function renderMission(d) {
     </div>`).join('');
   const actions = (d.actions||[]).map(a => `<div class="small" style="padding:4px 0;border-bottom:1px dotted var(--line)">▸ ${escapeHtml(a)}</div>`).join('');
   let domain = '';
-  const missionDecisions = [d.decision, ...(((GLOBAL||{}).decision_deck)||[]).filter(x => x.domain === d.id)]
-    .filter(Boolean).map(decisionCard).join('');
+  const missionDecision = d.decision ? decisionCard(d.decision) : '';
   if (d.id === 'cyber_defense') {
     const recentKev = (detail.recent_kev||[]).slice(0,6).map(v => `<div class="small">▸ <strong>${v.cve}</strong> · ${escapeHtml(v.vendor||'')} ${escapeHtml(v.product||'')} · due ${escapeHtml(v.due_date||'')}</div>`).join('');
     const iocs = (detail.iocs||[]).slice(0,6).map(i => `<div class="small">▸ <strong>${escapeHtml(i.ioc||'')}</strong> · ${escapeHtml(i.malware||'unknown')} · ${escapeHtml(i.type||'')}</div>`).join('');
@@ -1883,18 +2021,19 @@ function renderMission(d) {
     domain = `<h3>DATA AVAILABLE</h3><div class="card">${catalog || '<span class="hint">Source catalog loading.</span>'}</div>`;
   }
   $("body").innerHTML = `
-    <h3>MISSION MODULE · ${escapeHtml(d.label)}</h3>
+    <h3>${escapeHtml((d.label || '').toUpperCase())} · DEDICATED COMMAND PAGE</h3>
     <div class="desc">${escapeHtml(d.problem)}</div>
     ${metricCards(d.metrics)}
-    ${missionDecisions ? `<h3>DECISION SCORES FOR THIS PAGE</h3>${missionDecisions}` : ''}
+    ${missionDecision ? `<h3>PRIMARY DECISION SCORE FOR THIS PAGE</h3>${missionDecision}` : ''}
+    ${moduleModeDashboard(d)}
     ${moduleLivePanel(d.id)}
+    ${domain}
+    ${renderDeepDive(d)}
     ${expansionPanel(expansion)}
-    <h3>TRUSTED SOURCES</h3>
+    <h3>TRUSTED SOURCES · SCOPED TO ${escapeHtml(d.label || d.id)}</h3>
     <div>${sourcePills(d.sources_detail)}</div>
     <h3>ONE-CLICK ACTIONS</h3>
     ${actions}
-    ${domain}
-    ${renderDeepDive(d)}
     <h3>MAP HOTSPOTS</h3>
     ${hotspots || '<div class="hint">No dedicated hotspots yet. The source catalog is still active for this module.</div>'}
     ${renderRiskNotes()}
