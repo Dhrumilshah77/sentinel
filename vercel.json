@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "python -m pip install fastapi requests python-dotenv",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/app.py"
+    }
+  ]
+}
