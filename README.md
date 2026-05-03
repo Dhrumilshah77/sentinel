@@ -2,6 +2,8 @@
 
 **Mission decision intelligence for digital defense.**
 
+**Live demo:** [https://sentinel-one-alpha.vercel.app](https://sentinel-one-alpha.vercel.app)
+
 SENTINEL is a multi-domain command console built for the 3rd Annual National
 Security Hackathon. It fuses public, trusted national-security data into a
 single 3D operational picture that helps a commander answer:
