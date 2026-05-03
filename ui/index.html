@@ -100,8 +100,10 @@
   .page-tabs button.active { color:var(--accent); border-color:var(--accent); }
 
   /* main grid */
-  .main { display:grid; grid-template-columns: minmax(280px, 25vw) 1fr; gap:0;
+  .main { display:grid; grid-template-columns: minmax(360px, 33vw) 1fr; gap:0;
     height: calc(100vh - 33px - 49px - 47px - 84px - 72px - 54px); }
+  body.dashboard-page .main { grid-template-columns:minmax(480px, 46vw) 1fr; }
+  body.detail-page .main { grid-template-columns:minmax(360px, 33vw) 1fr; }
   /* classification + header + commandbar + actions + agencies */
 
   .globe-wrap { position:relative; background:#020306; overflow:hidden; }
@@ -134,7 +136,9 @@
     border:1px solid var(--line); border-radius:4px; font:inherit; font-size:18px; cursor:pointer; }
   .zoom-controls button:hover { border-color:var(--accent); color:var(--accent); }
   @media (max-width: 1200px) {
-    .main { grid-template-columns:minmax(280px, 32vw) 1fr; }
+    .main,
+    body.dashboard-page .main,
+    body.detail-page .main { grid-template-columns:minmax(320px, 38vw) 1fr; }
     .live-stream { display:none; }
     .layer-panel { width:220px; }
   }
@@ -558,6 +562,9 @@ function renderModuleGrid(activeId) {
 }
 
 function renderPageTabs(activeId) {
+  document.body.classList.toggle('dashboard-page', activeId === 'global');
+  document.body.classList.toggle('detail-page', activeId !== 'global');
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
   renderModuleGrid(activeId);
   $("pageTabs").innerHTML = '';
   document.querySelectorAll('#topnav button').forEach(b => {
