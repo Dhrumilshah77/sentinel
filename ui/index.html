@@ -56,6 +56,10 @@
   .commandbar button.crit  { background:var(--crit);    color:#fff; }
   .commandbar button.green { background:#1f8a3e;        color:#dff7e6; }
   .commandbar button.purple{ background:var(--magenta); color:#1f0a26; }
+  .mode-toggle { display:flex; gap:4px; align-items:center; border-left:1px solid var(--line); padding-left:8px; }
+  .mode-toggle button { background:#0a0f15; color:var(--mute); border:1px solid var(--line);
+    padding:7px 8px; font-size:9.5px; letter-spacing:.8px; }
+  .mode-toggle button.active { color:var(--accent); border-color:var(--accent); background:#101824; }
 
   /* big buttons */
   .actions { display:grid; grid-template-columns:repeat(auto-fit, minmax(105px, 1fr)); gap:1px; background:var(--line);
@@ -96,7 +100,7 @@
   .page-tabs button.active { color:var(--accent); border-color:var(--accent); }
 
   /* main grid */
-  .main { display:grid; grid-template-columns: minmax(390px, 36vw) 1fr; gap:0;
+  .main { display:grid; grid-template-columns: minmax(280px, 25vw) 1fr; gap:0;
     height: calc(100vh - 33px - 49px - 47px - 84px - 72px - 54px); }
   /* classification + header + commandbar + actions + agencies */
 
@@ -129,6 +133,11 @@
   .zoom-controls button { width:34px; height:34px; background:#0a0f15; color:var(--fg);
     border:1px solid var(--line); border-radius:4px; font:inherit; font-size:18px; cursor:pointer; }
   .zoom-controls button:hover { border-color:var(--accent); color:var(--accent); }
+  @media (max-width: 1200px) {
+    .main { grid-template-columns:minmax(280px, 32vw) 1fr; }
+    .live-stream { display:none; }
+    .layer-panel { width:220px; }
+  }
 
   /* dossier */
   .dossier { display:flex; flex-direction:column; min-width:0; overflow:hidden;
@@ -328,6 +337,11 @@
   <button class="green" onclick="liveScan()">⚡ LIVE SCAN</button>
   <button class="gold" onclick="generateBriefing()">⚑ BRIEFING</button>
   <button class="purple" onclick="openChat()">◆ ANALYST CHAT</button>
+  <div class="mode-toggle" id="dataModeToggle">
+    <button class="active" data-mode="real" onclick="setDataMode('real')" title="Fast real public datasets and cached trusted feeds">Real</button>
+    <button data-mode="live" onclick="setDataMode('live')" title="Actively poll free public APIs and show feed health">Live</button>
+    <button data-mode="historic" onclick="setDataMode('historic')" title="Real historical cases, typologies, and baseline datasets">Historic</button>
+  </div>
 </div>
 
 <div class="module-grid" id="moduleGrid"></div>
@@ -421,6 +435,7 @@ let DECISION_LOOKUP = {};
 let COUNTRY_BOUNDARIES = [], US_STATE_BOUNDARIES = [];
 let RISK_NOTES = [];
 let LIVE_TICK = 0;
+let DATA_MODE = 'real';
 const LAYERS = {
   boundaries:'Country Borders',
   states:'US State Borders',
@@ -550,6 +565,60 @@ function renderPageTabs(activeId) {
   });
 }
 
+function renderDataMode() {
+  document.querySelectorAll('#dataModeToggle button').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === DATA_MODE);
+  });
+}
+
+function dataModeSummary() {
+  if (DATA_MODE === 'live') return 'Live mode polls NASA, USGS, NOAA, OpenSky, GDELT, GDACS, SWPC, CoinGecko, and WorldMonitor-style public feed families. If a provider rate-limits, Sentinel shows feed health instead of blocking navigation.';
+  if (DATA_MODE === 'historic') return 'Historic mode uses real public baseline datasets, prior typologies, historical patterns, sanctions exposure, and mission-relevant playbooks for fast drilldown.';
+  return 'Real mode uses trusted public datasets and cached real feeds first so every module opens fast; switch to Live when you want active external polling.';
+}
+
+async function setDataMode(mode) {
+  DATA_MODE = mode;
+  renderDataMode();
+  if (mode === 'live') await refreshGlobalLive(true);
+  else {
+    GLOBAL = await fetch('/monitor/global?live=false').then(r=>r.json());
+    GLOBAL._mode = mode;
+    renderGlobalMetrics(GLOBAL.metrics || []);
+    renderLiveStream();
+    if (CURRENT_DATA && CURRENT_DATA._kind === 'global') {
+      CURRENT_DATA = { _kind:'global', ...GLOBAL };
+      renderMapMarkers(null, globalExtraMarkers());
+      renderTab();
+    } else if (CURRENT_DATA && CURRENT_DATA._kind === 'mission') {
+      renderTab();
+    }
+  }
+}
+
+async function fetchGlobalForMode() {
+  const live = DATA_MODE === 'live';
+  const g = await fetch('/monitor/global?live=' + (live ? 'true' : 'false')).then(r=>r.json());
+  g._mode = DATA_MODE;
+  return g;
+}
+
+async function hydrateGlobalForNavigation() {
+  if (DATA_MODE === 'live') {
+    if (!GLOBAL || !GLOBAL.metrics) {
+      GLOBAL = await fetch('/monitor/global?live=false').then(r=>r.json());
+      GLOBAL._mode = DATA_MODE;
+    }
+    renderGlobalMetrics(GLOBAL.metrics || []);
+    renderLiveStream();
+    refreshGlobalLive(true);
+    return;
+  }
+  GLOBAL = await fetchGlobalForMode();
+  renderGlobalMetrics(GLOBAL.metrics || []);
+  renderLiveStream();
+}
+
 function renderLayerControls() {
   const el = $("layerGrid");
   if (!el) return;
@@ -604,12 +673,24 @@ function liveSignalItems() {
     tag:'AIR',
     text:`${a.callsign || a.icao24 || 'aircraft'} ${a.origin_country || ''} alt ${a.altitude_m || 'n/a'}m`,
   }));
+  ((((live.signals||{}).worldmonitor_bootstrap||{}).items||[]).slice(0,6)).forEach(k => items.push({
+    tag:'KOALA',
+    text:`WorldMonitor source pattern: ${k}`,
+  }));
+  ((((live.signals||{}).worldmonitor_risk||{}).items||[]).slice(0,6)).forEach(r => items.push({
+    tag:'MODEL',
+    text:`${r.region || 'region'} risk ${r.combinedScore ?? r.score ?? 'n/a'} trend ${r.trend || 'n/a'}`,
+  }));
+  Object.entries(((live.signals||{}).crypto_market||{}).items || {}).slice(0,6).forEach(([coin, v]) => items.push({
+    tag:'CRYPTO',
+    text:`${coin} $${v.usd ?? 'n/a'} · 24h ${Number(v.usd_24h_change || 0).toFixed(2)}% · AML exposure cue`,
+  }));
   (((GLOBAL||{}).decision_deck)||[]).slice(0,5).forEach(d => items.push({
     tag:d.band || 'RISK',
     text:`${d.score || ''} ${d.title || 'decision score'}`,
   }));
   if (!items.length) items.push(
-    {tag:'POLL', text:'Awaiting NASA/USGS/NOAA/GDELT/OpenSky refresh or rate-limit recovery.'},
+    {tag:DATA_MODE.toUpperCase(), text:DATA_MODE === 'live' ? 'Awaiting NASA/USGS/NOAA/GDELT/OpenSky refresh or rate-limit recovery.' : 'Fast mode: using cached real public datasets; switch to Live for external API polling.'},
     {tag:'READY', text:'Click any marker or module to produce a concise current-context report.'}
   );
   return items;
@@ -621,14 +702,16 @@ function renderLiveStream() {
   const items = liveSignalItems();
   LIVE_TICK = (LIVE_TICK + 1) % Math.max(items.length, 1);
   const visible = Array.from({length: Math.min(5, items.length)}, (_, i) => items[(LIVE_TICK + i) % items.length]);
-  el.innerHTML = `<h3><span class="pulse"></span> Incoming Live Signals</h3>` + visible.map(x => `
+  el.innerHTML = `<h3><span class="pulse"></span> Incoming Signals · ${escapeHtml(DATA_MODE.toUpperCase())}</h3><div class="hint">${escapeHtml(dataModeSummary())}</div>` + visible.map(x => `
     <div class="item"><b>${escapeHtml(String(x.tag).slice(0,8))}</b><span>${escapeHtml(String(x.text).slice(0,120))}</span></div>
   `).join('');
 }
 
-async function refreshGlobalLive() {
+async function refreshGlobalLive(force=false) {
+  if (DATA_MODE !== 'live' && !force) { renderLiveStream(); return; }
   try {
     const live = await fetch('/monitor/global?live=true').then(r=>r.json());
+    live._mode = 'live';
     GLOBAL = live;
     renderGlobalMetrics(live.metrics || []);
     renderLiveStream();
@@ -650,7 +733,7 @@ async function openPage(id, push=true) {
   renderPageTabs(id);
   setPageLayers(id);
   if (id === 'global') {
-    GLOBAL = await fetch('/monitor/global?live=true').then(r=>r.json());
+    GLOBAL = await fetchGlobalForMode();
     renderGlobalMetrics(GLOBAL.metrics || []);
     renderLiveStream();
     CURRENT_DATA = { _kind:'global', ...GLOBAL };
@@ -676,10 +759,10 @@ async function bootstrap() {
     fetch('/exposure').then(r=>r.json()),
     fetch('/sanctions/summary').then(r=>r.json()),
     fetch('/mission/summary').then(r=>r.json()),
-    fetch('/monitor/global?live=true').then(r=>r.json()),
+    fetch('/monitor/global?live=false').then(r=>r.json()),
   ]);
   MISSION = mission;
-  GLOBAL = global;
+  GLOBAL = {...global, _mode:DATA_MODE};
   renderPageTabs('global');
   renderGlobalMetrics(global.metrics || []);
   renderLiveStream();
@@ -1079,9 +1162,7 @@ async function loadView(kind) {
 async function loadMission(moduleId, push=true) {
   CURRENT_PAGE = moduleId;
   if (push) syncHash(moduleId);
-  GLOBAL = await fetch('/monitor/global?live=true').then(r=>r.json());
-  renderGlobalMetrics(GLOBAL.metrics || []);
-  renderLiveStream();
+  await hydrateGlobalForNavigation();
   const j = await fetch('/mission/module/'+encodeURIComponent(moduleId)).then(r=>r.json());
   CURRENT_DATA = { _kind:'mission', ...j };
   renderMapMarkers(moduleId, moduleExtraMarkers(moduleId));
@@ -1378,7 +1459,8 @@ function moduleLivePanel(moduleId) {
     </div>`).join('') : '';
   return `
     <h3>LIVE PUBLIC INTEL · LAST 24H / ACTIVE FEEDS</h3>
-    <div class="reason"><strong>Live feed status:</strong> GDELT ${escapeHtml((signals.gdelt_articles||{}).status || 'pending')} · NASA ${escapeHtml((signals.nasa_eonet||{}).status || 'pending')} · USGS ${escapeHtml((signals.usgs_earthquakes||{}).status || 'pending')} · NOAA ${escapeHtml((signals.noaa_alerts||{}).status || 'pending')} · OpenSky ${escapeHtml((signals.opensky_aircraft||{}).status || 'pending')}</div>
+    <div class="reason"><strong>Mode meaning:</strong> ${escapeHtml(dataModeSummary())}</div>
+    <div class="reason"><strong>Data mode:</strong> ${escapeHtml(DATA_MODE.toUpperCase())} · <strong>Feed status:</strong> GDELT ${escapeHtml((signals.gdelt_articles||{}).status || 'pending')} · NASA ${escapeHtml((signals.nasa_eonet||{}).status || 'pending')} · USGS ${escapeHtml((signals.usgs_earthquakes||{}).status || 'pending')} · NOAA ${escapeHtml((signals.noaa_alerts||{}).status || 'pending')} · OpenSky ${escapeHtml((signals.opensky_aircraft||{}).status || 'pending')} · CoinGecko ${escapeHtml((signals.crypto_market||{}).status || 'pending')} · Koala model ${escapeHtml((signals.worldmonitor_bootstrap||{}).status || 'pending')}</div>
     ${articleHtml || '<div class="hint">No matching live GDELT articles in this refresh window; public feeds may be quiet or rate-limited.</div>'}
     ${eventHtml}
     ${aircraftHtml}

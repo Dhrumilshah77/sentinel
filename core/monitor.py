@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import math
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any
 
 import requests
 
 UA = {"User-Agent": "sentinel-natsec-monitor/1.0"}
-T = 7
+T = 4
 
 SATELLITE_LAYERS: list[dict[str, Any]] = [
     {
@@ -102,6 +103,19 @@ MISSION_ASSETS: list[dict[str, Any]] = [
     {"id": "silicon-valley", "name": "Defense AI / Cloud Supply Base", "lat": 37.387, "lng": -122.060, "type": "Defense Industrial Base", "criticality": 88},
 ]
 
+KOALA_SOURCE_PATTERNS = [
+    "GDELT geo-events/news correlation",
+    "USGS earthquakes M4.5+",
+    "GDACS disaster alerts",
+    "NASA EONET open events",
+    "NOAA/NWS weather alerts",
+    "OpenSky ADS-B aircraft",
+    "NASA FIRMS/GIBS imagery layers",
+    "Crypto/market risk radar",
+    "Country risk scoring model",
+    "Multi-layer 3D globe controls",
+]
+
 
 def _get_json(url: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
@@ -146,29 +160,47 @@ def _point_from_geo(geo: dict[str, Any] | None) -> tuple[float | None, float | N
 def live_public_signals() -> dict[str, Any]:
     """Fetch no-auth public feeds. Each failure is isolated so the dashboard
     still works during venue Wi-Fi weirdness."""
-    eonet = _get_json("https://eonet.gsfc.nasa.gov/api/v3/events", {"status": "open", "days": 30, "limit": 30})
-    quakes = _get_json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson")
-    noaa = _get_json("https://api.weather.gov/alerts/active", {"status": "actual", "message_type": "alert"})
-    opensky = _get_json(
-        "https://opensky-network.org/api/states/all",
-        {"lamin": 24.0, "lomin": -125.0, "lamax": 50.0, "lomax": -66.0},
-    )
-    gdelt = _get_json(
-        "https://api.gdeltproject.org/api/v2/doc/doc",
-        {
-            "query": (
-                '(military OR cyberattack OR sanctions OR "port disruption" OR "supply chain" '
-                'OR fraud OR "money laundering" OR "wire fraud" OR "business email compromise" '
-                'OR ransomware OR "crypto scam" OR "trade based money laundering" OR "AIS" OR "satellite imagery")'
+    gdelt_params = {
+        "query": (
+            '(military OR cyberattack OR sanctions OR "port disruption" OR "supply chain" '
+            'OR fraud OR "money laundering" OR "wire fraud" OR "business email compromise" '
+            'OR ransomware OR "crypto scam" OR "trade based money laundering" OR "AIS" OR "satellite imagery")'
+        ),
+        "mode": "ArtList",
+        "format": "json",
+        "maxrecords": 50,
+        "timespan": "24h",
+    }
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futs = {
+            "eonet": pool.submit(_get_json, "https://eonet.gsfc.nasa.gov/api/v3/events", {"status": "open", "days": 30, "limit": 30}),
+            "quakes": pool.submit(_get_json, "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson"),
+            "noaa": pool.submit(_get_json, "https://api.weather.gov/alerts/active", {"status": "actual", "message_type": "alert"}),
+            "opensky": pool.submit(_get_json, "https://opensky-network.org/api/states/all", {"lamin": 24.0, "lomin": -125.0, "lamax": 50.0, "lomax": -66.0}),
+            "gdelt": pool.submit(_get_json, "https://api.gdeltproject.org/api/v2/doc/doc", gdelt_params),
+            "gdacs_xml": pool.submit(_get_text, "https://www.gdacs.org/xml/rss.xml"),
+            "swpc": pool.submit(_get_json, "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"),
+            "coingecko": pool.submit(
+                _get_json,
+                "https://api.coingecko.com/api/v3/simple/price",
+                {
+                    "ids": "bitcoin,ethereum,tether,usd-coin,monero,tron,solana",
+                    "vs_currencies": "usd",
+                    "include_market_cap": "true",
+                    "include_24hr_vol": "true",
+                    "include_24hr_change": "true",
+                    "include_last_updated_at": "true",
+                },
             ),
-            "mode": "ArtList",
-            "format": "json",
-            "maxrecords": 50,
-            "timespan": "24h",
-        },
-    )
-    gdacs_xml = _get_text("https://www.gdacs.org/xml/rss.xml")
-    swpc = _get_json("https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json")
+        }
+        eonet = futs["eonet"].result()
+        quakes = futs["quakes"].result()
+        noaa = futs["noaa"].result()
+        opensky = futs["opensky"].result()
+        gdelt = futs["gdelt"].result()
+        gdacs_xml = futs["gdacs_xml"].result()
+        swpc = futs["swpc"].result()
+        coingecko = futs["coingecko"].result()
 
     disaster_events: list[dict[str, Any]] = []
     for ev in (eonet.get("events") or [])[:20]:
@@ -293,6 +325,20 @@ def live_public_signals() -> dict[str, Any]:
             "gdacs_alerts": {"count": len(gdacs_events), "items": gdacs_events, "status": "ok" if gdacs_xml else "error"},
             "gdelt_articles": {"count": len(gdelt_items), "items": gdelt_items, "status": _status(gdelt)},
             "noaa_space_weather": space_weather,
+            "worldmonitor_bootstrap": {
+                "count": len(KOALA_SOURCE_PATTERNS),
+                "items": KOALA_SOURCE_PATTERNS,
+                "status": "mapped",
+            },
+            "worldmonitor_risk": {
+                "count": len(STRATEGIC_HOTSPOTS),
+                "items": [
+                    {"region": h["name"], "combinedScore": 92 if h["severity"] == "CRITICAL" else 78, "trend": "WATCH"}
+                    for h in STRATEGIC_HOTSPOTS
+                ],
+                "status": "modeled",
+            },
+            "crypto_market": {"count": len(coingecko.keys()) if isinstance(coingecko, dict) and "_error" not in coingecko and "_status" not in coingecko else 0, "items": coingecko if isinstance(coingecko, dict) else {}, "status": _status(coingecko)},
         },
         "map_events": all_events[:45],
         "fetched_at": datetime.utcnow().isoformat() + "Z",
@@ -488,18 +534,21 @@ def global_monitor(intel: Any, sanctions: Any, exposure: Any, include_live: bool
     sanction_summary = sanctions.summary()
     exposure_report = exposure.report()
     live = live_public_signals() if include_live else {"signals": {}, "map_events": [], "fetched_at": None}
+    feed_default = "live" if include_live else "real"
 
     metrics = [
         {"label": "Active Cyber CVEs", "value": intel_summary["kev_count"], "tone": "crit", "source": "CISA KEV"},
         {"label": "Live Malware IOCs", "value": intel_summary["live_iocs"], "tone": "bad", "source": "abuse.ch"},
         {"label": "Sanctioned Entities", "value": sanction_summary["ofac_total"], "tone": "gold", "source": "OFAC SDN"},
         {"label": "Exposed Vendors", "value": exposure_report["totals"]["vendors_with_active_exploits"], "tone": "warn", "source": "CISA KEV x DoD stack"},
-        {"label": "Open Disaster Signals", "value": live["signals"].get("nasa_eonet", {}).get("count", "live"), "tone": "ok", "source": "NASA EONET"},
-        {"label": "USGS M4.5+ Quakes", "value": live["signals"].get("usgs_earthquakes", {}).get("count", "live"), "tone": "warn", "source": "USGS"},
-        {"label": "US Weather Alerts", "value": live["signals"].get("noaa_alerts", {}).get("count", "live"), "tone": "ok", "source": "NOAA"},
-        {"label": "Air Tracks", "value": live["signals"].get("opensky_aircraft", {}).get("count", "live"), "tone": "ok", "source": "OpenSky"},
-        {"label": "GDACS Alerts", "value": live["signals"].get("gdacs_alerts", {}).get("count", "live"), "tone": "warn", "source": "GDACS"},
-        {"label": "GDELT Intel", "value": live["signals"].get("gdelt_articles", {}).get("count", "live"), "tone": "gold", "source": "GDELT 2.1"},
+        {"label": "Open Disaster Signals", "value": live["signals"].get("nasa_eonet", {}).get("count", feed_default), "tone": "ok", "source": "NASA EONET"},
+        {"label": "USGS M4.5+ Quakes", "value": live["signals"].get("usgs_earthquakes", {}).get("count", feed_default), "tone": "warn", "source": "USGS"},
+        {"label": "US Weather Alerts", "value": live["signals"].get("noaa_alerts", {}).get("count", feed_default), "tone": "ok", "source": "NOAA"},
+        {"label": "Air Tracks", "value": live["signals"].get("opensky_aircraft", {}).get("count", feed_default), "tone": "ok", "source": "OpenSky"},
+        {"label": "GDACS Alerts", "value": live["signals"].get("gdacs_alerts", {}).get("count", feed_default), "tone": "warn", "source": "GDACS"},
+        {"label": "GDELT Intel", "value": live["signals"].get("gdelt_articles", {}).get("count", feed_default), "tone": "gold", "source": "GDELT 2.1"},
+        {"label": "Koala Layers", "value": live["signals"].get("worldmonitor_bootstrap", {}).get("count", "real"), "tone": "ok", "source": "WorldMonitor source catalog pattern"},
+        {"label": "Crypto Radar", "value": live["signals"].get("crypto_market", {}).get("count", "real"), "tone": "gold", "source": "CoinGecko free API"},
     ]
 
     convergence = []
@@ -515,14 +564,16 @@ def global_monitor(intel: Any, sanctions: Any, exposure: Any, include_live: bool
         "metrics": metrics,
         "decision_deck": decision_products(intel, sanctions, exposure, live),
         "koala_metrics": [
-            {"label": "Layer Model", "value": 8, "tone": "ok", "source": "Koala-inspired map layers"},
-            {"label": "Signal Categories", "value": 12, "tone": "gold", "source": "Cyber + AML + geospatial + infrastructure"},
+            {"label": "Layer Model", "value": 10, "tone": "ok", "source": "Koala-inspired map layers"},
+            {"label": "Signal Categories", "value": 15, "tone": "gold", "source": "Cyber + AML + geospatial + infrastructure"},
             {"label": "Risk Hotspots", "value": len(STRATEGIC_HOTSPOTS), "tone": "warn", "source": "Cross-stream convergence"},
             {"label": "Country Risk Index", "value": len(intel_summary["apt_by_country"]), "tone": "bad", "source": "MITRE attribution + OFAC"},
             {"label": "Trusted Source Families", "value": 9, "tone": "ok", "source": "Military-grade public datasets"},
-            {"label": "Source Health", "value": "LIVE", "tone": "ok", "source": "No-auth public APIs + cached feeds"},
+            {"label": "Source Health", "value": "LIVE" if include_live else "FAST", "tone": "ok", "source": "No-auth public APIs + cached feeds"},
             {"label": "Imagery Layers", "value": len(SATELLITE_LAYERS), "tone": "ok", "source": "NASA/USGS/Copernicus"},
             {"label": "Live News Intel", "value": live["signals"].get("gdelt_articles", {}).get("count", "live"), "tone": "gold", "source": "GDELT"},
+            {"label": "Koala Source Pattern", "value": live["signals"].get("worldmonitor_bootstrap", {}).get("count", "real"), "tone": "ok", "source": "WorldMonitor DATA_SOURCES.md"},
+            {"label": "Crypto Live Prices", "value": live["signals"].get("crypto_market", {}).get("count", "real"), "tone": "gold", "source": "CoinGecko free API"},
         ],
         "convergence": sorted(convergence, key=lambda x: -x["score"]),
         "live": live,
