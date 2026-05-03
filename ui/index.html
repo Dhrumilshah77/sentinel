@@ -30,7 +30,7 @@
   .brand h1 small { display:block; font-size:9.5px; color:var(--mute); letter-spacing:3px; margin-top:2px; }
   .meta { color:var(--mute); font-size:10.5px; letter-spacing:1px; text-align:right; }
   .meta strong { color:var(--fg); }
-  .topnav { margin-left:auto; display:flex; align-items:center; gap:5px; max-width:720px; overflow-x:auto; padding:0 12px; }
+  .topnav { display:none; margin-left:auto; align-items:center; gap:5px; max-width:720px; overflow-x:auto; padding:0 12px; }
   .topnav button { flex-shrink:0; background:#0a0f15; color:var(--mute); border:1px solid var(--line);
     padding:6px 8px; border-radius:4px; cursor:pointer; font:inherit; font-size:9.5px; letter-spacing:.8px;
     text-transform:uppercase; }
@@ -76,6 +76,16 @@
   .actions.global-metrics button:hover { background:#0a0f15; color:var(--fg); }
   .actions.global-metrics button .metric-source { display:block; color:var(--mute); font-size:8.5px;
     letter-spacing:.6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:none; }
+  .module-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:1px; background:var(--line);
+    border-bottom:1px solid var(--line); }
+  .module-grid button { min-width:0; height:84px; background:#0a0f15; color:var(--fg);
+    border:none; cursor:pointer; text-align:left; padding:10px 12px; font:inherit; }
+  .module-grid button:hover, .module-grid button.active { background:#101824; outline:1px solid var(--accent); outline-offset:-1px; }
+  .module-grid .module-title { display:block; color:var(--accent); font-size:12px; font-weight:700;
+    letter-spacing:1.1px; text-transform:uppercase; white-space:normal; line-height:1.2; }
+  .module-grid .module-sub { display:block; margin-top:6px; color:var(--mute); font-size:9.5px;
+    line-height:1.25; letter-spacing:.3px; text-transform:none; }
+  .module-grid .module-score { float:right; color:var(--gold); font-size:18px; line-height:1; }
 
   .page-tabs { display:none; height:0; align-items:center; gap:6px; padding:0 14px;
     border-bottom:1px solid var(--line); background:#06090d; overflow-x:auto; }
@@ -86,7 +96,7 @@
 
   /* main grid */
   .main { display:grid; grid-template-columns: 1fr 480px; gap:0;
-    height: calc(100vh - 33px - 49px - 47px - 72px - 54px); }
+    height: calc(100vh - 33px - 49px - 47px - 84px - 72px - 54px); }
   /* classification + header + commandbar + actions + agencies */
 
   .globe-wrap { position:relative; background:#020306; overflow:hidden; }
@@ -276,7 +286,6 @@
     <div class="mark">S</div>
     <h1>SENTINEL <small>MULTI-AGENCY CYBER THREAT FUSION · NATSEC HACKATHON</small></h1>
   </div>
-  <button class="dashboard-anchor" onclick="openPage('global')">Dashboard</button>
   <nav class="topnav" id="topnav">
     <button class="active" data-page="global" onclick="openPage('global')">Global</button>
     <button data-page="cyber_defense" onclick="openPage('cyber_defense')">Cyber Security</button>
@@ -303,6 +312,7 @@
   <button class="purple" onclick="openChat()">◆ ANALYST CHAT</button>
 </div>
 
+<div class="module-grid" id="moduleGrid"></div>
 <div class="page-tabs" id="pageTabs"></div>
 
 <div class="actions global-metrics" id="globalMetrics">
@@ -321,7 +331,7 @@
     <div id="globeViz"></div>
     <div class="globe-overlay">
       <strong>GLOBAL ATTACK FLOW</strong>
-      <div>WorldMonitor-style stripped view · cyber + AML + disasters + satellite<br>Click marker → hotspot dossier · top-right buttons open pages</div>
+      <div>WorldMonitor-style stripped view · cyber + AML + disasters + satellite<br>Click marker for city/state dossier · mission buttons open routed pages</div>
       <div class="legend">
         <span><i style="background:#ef4444"></i>nation-state</span>&nbsp;
         <span><i style="background:#f59e0b"></i>criminal</span>&nbsp;
@@ -354,7 +364,7 @@
 </div>
 
 <div class="timeline">
-  <h3>OPEN-SOURCE INGEST · 11 AGENCY / OSINT FEEDS</h3>
+  <h3>OPEN-SOURCE INGEST · 28 TRUSTED PUBLIC FEEDS / DATASETS</h3>
   <div class="agency-row" id="agencies"></div>
 </div>
 
@@ -407,6 +417,19 @@ const PAGE_LABELS = {
   aviation_maritime:'Air + Maritime', disasters:'Disasters', satellite_imagery:'Satellite + Imagery',
   insider_ai:'Insider + AI'
 };
+const MODULE_ORDER = ['cyber_defense','geo_conflict','aml_finance','sanctions','supply_chain','aviation_maritime','disasters','satellite_imagery','insider_ai'];
+const MODULE_SUB = {
+  global:'Decision deck, live sources, world layers',
+  cyber_defense:'CISA KEV, MITRE, IOCs, exposure',
+  geo_conflict:'Conflict, sanctions, cyber spillover',
+  aml_finance:'ATO, CNP, crypto, mules, AML',
+  sanctions:'OFAC, PEPs, vessels, ownership',
+  supply_chain:'Vendors, SBOM, ports, chokepoints',
+  aviation_maritime:'OpenSky, ports, AIS/GNSS cues',
+  disasters:'USGS, NASA, NOAA, GDACS impact',
+  satellite_imagery:'NASA/USGS imagery and CV cues',
+  insider_ai:'UEBA, data exfil, model tampering'
+};
 
 function switchTab(t) {
   CURRENT_TAB = t;
@@ -414,22 +437,48 @@ function switchTab(t) {
   if (CURRENT_DATA) renderTab();
 }
 
-function routeFor(id){ return '#/' + encodeURIComponent(id); }
+function routeFor(id){ return id === 'global' ? '/' : '/module/' + encodeURIComponent(id); }
 
 function syncHash(id) {
   const next = routeFor(id);
-  if (window.location.hash !== next) window.location.hash = next;
+  const current = window.location.pathname + window.location.search;
+  if (current !== next) history.pushState({page:id}, '', next);
 }
 
 function pageFromHash() {
-  const raw = (window.location.hash || '#/global').replace(/^#\/?/, '');
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/' || path === '/index.html') return 'global';
+  const m = path.match(/^\/module\/([^/]+)$/);
+  if (m) return decodeURIComponent(m[1]);
+  const raw = (window.location.hash || '').replace(/^#\/?/, '');
   return decodeURIComponent(raw || 'global');
 }
 
-function renderPageTabs(activeId) {
-  $("pageTabs").innerHTML = OPEN_PAGES.map(p => `
-    <button class="${p.id===activeId?'active':''}" onclick="openPage('${p.id}')">${escapeHtml(p.label)}</button>
+function moduleScore(id) {
+  if (id === 'global') return 'LIVE';
+  const m = ((MISSION||{}).modules || []).find(x => x.id === id);
+  if (!m) return '...';
+  const primary = (m.metrics || [])[0] || {};
+  return primary.value ?? m.sources ?? '...';
+}
+
+function renderModuleGrid(activeId) {
+  const modules = [
+    { id:'global', label:'Dashboard' },
+    ...MODULE_ORDER.map(id => ({ id, label:PAGE_LABELS[id] || id }))
+  ];
+  $("moduleGrid").innerHTML = modules.map(m => `
+    <button class="${m.id===activeId?'active':''}" onclick="openPage('${m.id}')">
+      <span class="module-score">${escapeHtml(moduleScore(m.id))}</span>
+      <span class="module-title">${escapeHtml(m.label)}</span>
+      <span class="module-sub">${escapeHtml(MODULE_SUB[m.id] || 'Multi-source operational module')}</span>
+    </button>
   `).join('');
+}
+
+function renderPageTabs(activeId) {
+  renderModuleGrid(activeId);
+  $("pageTabs").innerHTML = '';
   document.querySelectorAll('#topnav button').forEach(b => {
     b.classList.toggle('active', b.dataset.page === activeId);
   });
@@ -533,12 +582,22 @@ async function bootstrap() {
     ["ag-mitre","MITRE",  `${s.apt_groups_total} APTs · ${s.techniques} techniques · ${s.malware_families} malware`],
     ["ag-first","FIRST EPSS", `live exploit prediction scores`],
     ["ag-tres","Treasury OFAC", `${fmtNum(sanc.ofac_total)} sanctioned entities · SDN list`],
+    ["ag-tres","FinCEN", `CVC, BEC, pig-butchering, mixer, and money-mule advisories`],
+    ["ag-tres","FATF", `virtual-asset red flags · laundering typologies`],
+    ["ag-tres","Fed FraudClassifier", `ACH · wire · check · card fraud taxonomy`],
     ["ag-state","State Dept RFJ", `Rewards for Justice · $${(sanc.wanted_bounty_usd/1_000_000).toFixed(0)}M outstanding`],
     ["ag-fbi","FBI Cyber", `Most Wanted · cyber bounties`],
+    ["ag-fbi","FBI IC3", `ATO · BEC · ransomware · crypto investment fraud · elder fraud`],
     ["ag-doj","DoJ", `nation-state indictments · public`],
     ["ag-nsa","NSA",  `cybersecurity advisories · DoD/IC`],
     ["ag-dod","DC3",  `DoD Cyber Crime Center`],
     ["ag-abuse","abuse.ch", `${fmtNum(s.live_iocs)} live IOCs · last 7d`],
+    ["ag-nasa","NASA EONET/GIBS", `disaster events · true color · thermal · precipitation imagery`],
+    ["ag-usgs","USGS", `earthquakes · LandsatLook imagery`],
+    ["ag-noaa","NOAA", `weather alerts · space weather`],
+    ["ag-gdacs","GDACS", `global disaster alert RSS`],
+    ["ag-opensky","OpenSky", `public aircraft state vectors`],
+    ["ag-gdelt","GDELT", `geopolitical media signal watch`],
   ];
   ag.innerHTML = pills.map(([cls,name,desc]) =>
     `<div class="agency-pill ${cls}"><strong>${name}</strong><span class="small">${desc}</span></div>`
@@ -1597,10 +1656,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const ci = $("chatQ");
   if (ci) ci.addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
 });
-window.addEventListener('hashchange', () => {
+function routeToCurrentLocation() {
   const id = pageFromHash();
   if (id && id !== CURRENT_PAGE) openPage(id, false);
-});
+}
+window.addEventListener('popstate', routeToCurrentLocation);
+window.addEventListener('hashchange', routeToCurrentLocation);
 
 bootstrap();
 </script>

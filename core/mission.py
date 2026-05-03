@@ -20,6 +20,12 @@ TRUSTED_SOURCES: list[dict[str, str]] = [
     {"name": "FBI Cyber Most Wanted", "agency": "FBI", "domain": "Cyber/Attribution", "access": "Public page"},
     {"name": "DoJ Cyber Indictments", "agency": "Department of Justice", "domain": "Attribution", "access": "Public releases"},
     {"name": "OFAC SDN", "agency": "US Treasury", "domain": "Sanctions/AML", "access": "Free CSV"},
+    {"name": "FinCEN Advisories", "agency": "US Treasury FinCEN", "domain": "AML/Fraud", "access": "Public advisories"},
+    {"name": "FATF Typologies", "agency": "FATF", "domain": "AML/Fraud", "access": "Public reports"},
+    {"name": "Federal Reserve FraudClassifier", "agency": "Federal Reserve", "domain": "Payments fraud", "access": "Public taxonomy"},
+    {"name": "FBI IC3", "agency": "FBI", "domain": "Internet crime", "access": "Public annual reports"},
+    {"name": "SEC Investor Alerts", "agency": "SEC", "domain": "Investor/crypto fraud", "access": "Public alerts"},
+    {"name": "CFTC Customer Advisories", "agency": "CFTC", "domain": "Commodity/crypto fraud", "access": "Public alerts"},
     {"name": "Rewards for Justice", "agency": "US State Department", "domain": "Bounties", "access": "Public page"},
     {"name": "NSA Advisories", "agency": "NSA", "domain": "Cyber defense", "access": "Public advisories"},
     {"name": "DC3", "agency": "DoD Cyber Crime Center", "domain": "DoD cyber", "access": "Public advisories"},
@@ -63,7 +69,7 @@ MISSION_MODULES: list[dict[str, Any]] = [
         "label": "Money Laundering",
         "short": "Trace sanctioned actors, cyber bounties, funding links, and criminal-finance pressure.",
         "problem": "Cyber operations often intersect with sanctions evasion, ransomware cashout, and state funding pipelines.",
-        "sources": ["OFAC SDN", "FBI Cyber Most Wanted", "DoJ Cyber Indictments", "Rewards for Justice", "CIA World Factbook"],
+        "sources": ["OFAC SDN", "FinCEN Advisories", "FATF Typologies", "Federal Reserve FraudClassifier", "FBI IC3", "SEC Investor Alerts", "CFTC Customer Advisories", "FBI Cyber Most Wanted", "DoJ Cyber Indictments", "Rewards for Justice", "CIA World Factbook"],
         "actions": [
             "Search OFAC names, aliases, programs, countries, and linked locations.",
             "Pivot from wanted actors to APT groups and funding flows.",
@@ -221,7 +227,7 @@ DETAILED_MODULES: dict[str, dict[str, Any]] = {
             {"period": "2020", "case": "FATF virtual asset red flags", "lesson": "Anonymity features, weak jurisdictions, unusual transaction patterns, and source-of-funds gaps are primary indicators."},
             {"period": "2020-2026", "case": "DPRK crypto theft and ransomware monetization", "lesson": "Cyber and AML cannot be separated; proceeds movement often funds strategic programs."},
         ],
-        "live_sources": ["OFAC SDN", "FBI Cyber Most Wanted", "State Rewards for Justice", "DoJ public indictments", "FATF red-flag typologies", "FinCEN advisories", "GDELT financial-crime watch"],
+        "live_sources": ["OFAC SDN", "FinCEN advisories", "FATF red-flag typologies", "Federal Reserve FraudClassifier", "FBI IC3", "SEC investor alerts", "CFTC customer advisories", "FBI Cyber Most Wanted", "State Rewards for Justice", "DoJ public indictments", "GDELT financial-crime watch"],
         "workflows": ["Identity -> device -> account -> transaction -> counterparty -> sanctions/PEP", "Wallet -> peel chain -> mixer/bridge -> exchange -> withdrawal entity", "Threat actor -> malware -> wallet/alias -> OFAC/FBI/DoJ evidence"],
         "flow_edges": [
             ["Victim funds", "Compromised account", "ATO / social engineering"],
@@ -357,6 +363,106 @@ DETAILED_MODULES: dict[str, dict[str, Any]] = {
 }
 
 
+EXTRA_TYPOLOGIES: dict[str, list[dict[str, Any]]] = {
+    "cyber_defense": [
+        {"name": "Phishing and BEC intrusion", "risk": "HIGH", "signals": ["lookalike domain", "new mail rule", "invoice language", "OAuth grant", "credential replay"], "decision": "Disable mail rules, revoke tokens, inspect mailbox and finance pivots."},
+        {"name": "Ransomware pre-positioning", "risk": "CRITICAL", "signals": ["remote admin tool", "backup deletion", "mass file enumeration", "domain admin use", "known ransomware CVE"], "decision": "Isolate affected segment and preserve identity/log evidence."},
+        {"name": "DDoS against sensor/comms edge", "risk": "HIGH", "signals": ["traffic spike", "single service saturation", "botnet ASN mix", "availability SLO breach"], "decision": "Shift to protected endpoint/CDN, rate-limit, and activate continuity plan."},
+        {"name": "Cloud control-plane abuse", "risk": "HIGH", "signals": ["new access key", "rare region", "security group opened", "snapshot export", "console login anomaly"], "decision": "Revoke keys, lock region, inspect IAM and storage access."},
+        {"name": "SaaS OAuth consent abuse", "risk": "HIGH", "signals": ["new app consent", "mail/read scopes", "unverified publisher", "cross-tenant token use"], "decision": "Remove app, revoke refresh tokens, review tenant-wide consents."},
+        {"name": "Data exfiltration", "risk": "CRITICAL", "signals": ["large egress", "rare destination", "encrypted archive", "DLP hit", "off-hours transfer"], "decision": "Stop transfer, snapshot logs, and scope affected data."},
+        {"name": "OT/ICS targeting", "risk": "CRITICAL", "signals": ["engineering workstation access", "Modbus/OPC anomaly", "new PLC logic", "flat IT/OT path"], "decision": "Segment OT, require manual validation, and shift to safety procedures."},
+        {"name": "Edge appliance exploitation", "risk": "CRITICAL", "signals": ["VPN/admin portal", "KEV match", "webshell indicator", "config export", "unusual child process"], "decision": "Reimage edge device and rotate all credentials crossing that boundary."},
+    ],
+    "aml_finance": [
+        {"name": "Card-not-present fraud", "risk": "HIGH", "signals": ["new card/device pair", "AVS/CVV mismatch", "high order velocity", "reshipper address", "BIN attack"], "decision": "Step-up authentication and hold fulfillment."},
+        {"name": "Card-present skimming", "risk": "MEDIUM", "signals": ["same merchant cluster", "fallback swipe", "geographic burst", "low-ticket testing"], "decision": "Alert acquiring/merchant team and monitor exposed card range."},
+        {"name": "Synthetic identity", "risk": "HIGH", "signals": ["thin file", "SSN/name mismatch", "device reuse", "rapid credit build", "address cluster"], "decision": "Require enhanced KYC and restrict credit/withdrawal limits."},
+        {"name": "Mule network recruitment", "risk": "HIGH", "signals": ["many inbound victims", "fast outbound wires", "same device/IP cluster", "student/elder segment"], "decision": "Freeze mule hub and produce graph packet for investigators."},
+        {"name": "Check fraud", "risk": "MEDIUM", "signals": ["mobile deposit anomaly", "new payee", "duplicate image", "high-risk routing number"], "decision": "Delay funds availability and verify maker institution."},
+        {"name": "ACH and wire fraud", "risk": "HIGH", "signals": ["new beneficiary", "template change", "large first transfer", "IP/device anomaly"], "decision": "Hold transfer and call back using verified contact channel."},
+        {"name": "BEC invoice diversion", "risk": "HIGH", "signals": ["vendor bank change", "invoice language drift", "mailbox rule", "lookalike domain"], "decision": "Verify vendor out-of-band and pivot to cyber investigation."},
+        {"name": "Pig-butchering / romance scam", "risk": "HIGH", "signals": ["victim narrative", "crypto ramp", "repeated wires", "foreign exchange", "social platform link"], "decision": "Trigger victim-safety workflow and block high-risk crypto outbound."},
+        {"name": "Refund and chargeback abuse", "risk": "MEDIUM", "signals": ["repeat disputes", "friendly-fraud pattern", "delivery confirmed", "shared device"], "decision": "Score account trust and require stronger purchase proof."},
+        {"name": "Promo and bonus abuse", "risk": "MEDIUM", "signals": ["many new accounts", "same device", "same funding source", "rapid withdrawal"], "decision": "Link identities and delay bonus payout."},
+        {"name": "Merchant fraud", "risk": "HIGH", "signals": ["rapid volume spike", "same customer cards", "refund loop", "high chargeback rate"], "decision": "Hold settlement and inspect merchant ownership."},
+        {"name": "Bust-out fraud", "risk": "HIGH", "signals": ["credit line growth", "sudden utilization", "many cash-like purchases", "no repayment"], "decision": "Lower exposure and block cash-equivalent channels."},
+        {"name": "Elder financial exploitation", "risk": "HIGH", "signals": ["new caregiver payee", "unusual withdrawal", "branch concern", "romance/BEC indicator"], "decision": "Escalate vulnerable-customer protocol and pause suspicious transfer."},
+        {"name": "Tax/refund fraud", "risk": "MEDIUM", "signals": ["same bank account across refunds", "synthetic identity", "filing velocity", "address reuse"], "decision": "Link entities and route to public-benefits fraud workflow."},
+        {"name": "Payroll diversion", "risk": "MEDIUM", "signals": ["direct deposit change", "new account", "employee mailbox compromise", "HR self-service anomaly"], "decision": "Verify with employee and reset compromised credentials."},
+        {"name": "SIM-swap enabled ATO", "risk": "HIGH", "signals": ["phone port-out", "password reset", "new device", "transfer within minutes"], "decision": "Lock account and require secure recovery."},
+        {"name": "Loan stacking", "risk": "HIGH", "signals": ["many applications", "short window", "shared device/address", "thin-file borrower"], "decision": "Query consortium-style signals and tighten underwriting."},
+    ],
+    "sanctions": [
+        {"name": "Export-control procurement evasion", "risk": "HIGH", "signals": ["dual-use commodity", "front company", "transshipment route", "end-user mismatch"], "decision": "Escalate trade-compliance review and block shipment release."},
+        {"name": "Front-company network", "risk": "HIGH", "signals": ["shared address", "nominee director", "rapid incorporation", "sanctioned-country nexus"], "decision": "Build ownership graph and mark indirect exposure."},
+        {"name": "Dual-use goods diversion", "risk": "HIGH", "signals": ["electronics/aerospace part", "unusual buyer", "rerouted logistics", "military end-use risk"], "decision": "Require end-use validation and legal review."},
+        {"name": "PEP screening", "risk": "MEDIUM", "signals": ["official role", "family/close associate", "state-owned enterprise", "adverse media"], "decision": "Apply enhanced due diligence and ongoing monitoring."},
+        {"name": "Adverse media escalation", "risk": "MEDIUM", "signals": ["corruption terms", "sanctions reporting", "indictment mention", "state-media linkage"], "decision": "Attach public evidence and require analyst disposition."},
+    ],
+    "supply_chain": [
+        {"name": "SBOM drift", "risk": "HIGH", "signals": ["new package", "version mismatch", "unknown license", "hash mismatch"], "decision": "Block release until SBOM and artifact hashes reconcile."},
+        {"name": "Vendor compromise", "risk": "CRITICAL", "signals": ["vendor KEV spike", "remote admin exposure", "incident disclosure", "trusted update path"], "decision": "Treat vendor channel as hostile until verification passes."},
+        {"name": "Counterfeit component risk", "risk": "HIGH", "signals": ["unusual broker", "obsolete part", "price anomaly", "country risk"], "decision": "Require provenance and independent inspection."},
+        {"name": "Single-source supplier", "risk": "MEDIUM", "signals": ["one supplier", "long lead time", "regional disaster", "no alternate contract"], "decision": "Prepare alternate sourcing and mission impact note."},
+        {"name": "Cloud region outage", "risk": "HIGH", "signals": ["regional service event", "single-region deployment", "identity/provider dependency"], "decision": "Fail over critical workloads and test recovery plan."},
+        {"name": "Route disruption", "risk": "HIGH", "signals": ["port closure", "canal delay", "storm track", "conflict route overlap"], "decision": "Recompute sustainment route and adjust inventory posture."},
+        {"name": "Dependency confusion", "risk": "HIGH", "signals": ["public package name collision", "new registry source", "install script", "build egress"], "decision": "Pin private registry and quarantine suspicious packages."},
+    ],
+    "geo_conflict": [
+        {"name": "Military mobilization cue", "risk": "HIGH", "signals": ["regional reporting spike", "air/sea activity", "border movement", "official rhetoric"], "decision": "Raise regional watch posture and update commander BLUF."},
+        {"name": "Election interference / influence ops", "risk": "HIGH", "signals": ["coordinated narratives", "bot-like repetition", "foreign state media", "phishing against civic orgs"], "decision": "Separate influence signal from verified intrusion evidence."},
+        {"name": "Energy chokepoint pressure", "risk": "HIGH", "signals": ["Hormuz/Suez/Red Sea proximity", "tanker reroute", "sanctions pressure", "oil/gas news spike"], "decision": "Notify logistics and supply-chain leads."},
+        {"name": "Refugee/humanitarian pressure", "risk": "MEDIUM", "signals": ["conflict escalation", "border reports", "OCHA/GDELT terms", "infrastructure damage"], "decision": "Assess aid route and civilian infrastructure implications."},
+        {"name": "EW/GPS interference", "risk": "HIGH", "signals": ["conflict theater", "aviation anomaly", "maritime spoofing", "reported jamming"], "decision": "Flag navigation confidence and switch to alternate PNT procedures."},
+    ],
+    "aviation_maritime": [
+        {"name": "AIS gap / dark shipping", "risk": "HIGH", "signals": ["transponder silence", "high-risk zone", "flag change", "port-call mismatch"], "decision": "Review vessel history and sanctions proximity."},
+        {"name": "Ship-to-ship transfer", "risk": "HIGH", "signals": ["loitering pair", "AIS proximity", "sanctioned cargo route", "night operation"], "decision": "Pivot sanctions/AML graph and port-state watch."},
+        {"name": "Spoofed vessel identity", "risk": "HIGH", "signals": ["IMO/name mismatch", "impossible speed", "duplicate MMSI", "track jump"], "decision": "Treat track as low confidence and require independent confirmation."},
+        {"name": "Port congestion", "risk": "MEDIUM", "signals": ["queue length", "weather alert", "labor/security event", "route concentration"], "decision": "Estimate sustainment delay and alternate port options."},
+        {"name": "Airspace closure", "risk": "HIGH", "signals": ["NOTAM/news alert", "conflict proximity", "route deviation", "military exercise"], "decision": "Notify air mobility and adjust routing assumptions."},
+        {"name": "ADS-B anomaly", "risk": "MEDIUM", "signals": ["identity change", "altitude jump", "track dropout", "unexpected origin"], "decision": "Use as cue for human watch, not final attribution."},
+        {"name": "Drone/UAS corridor risk", "risk": "HIGH", "signals": ["critical facility", "airspace restriction", "recent incident", "low-altitude pattern"], "decision": "Coordinate counter-UAS and local security posture."},
+    ],
+    "disasters": [
+        {"name": "Cyclone / hurricane impact", "risk": "HIGH", "signals": ["GDACS/NOAA alert", "coastal facility", "port route", "storm surge"], "decision": "Stage continuity, power, and route fallback."},
+        {"name": "Extreme heat", "risk": "MEDIUM", "signals": ["heat warning", "power demand", "outdoor operations", "cooling dependency"], "decision": "Protect personnel and critical infrastructure cooling."},
+        {"name": "Drought / water stress", "risk": "MEDIUM", "signals": ["long-duration alert", "reservoir/river context", "agriculture/logistics impact"], "decision": "Monitor sustainment and host-nation stability effects."},
+        {"name": "Volcano / ash cloud", "risk": "HIGH", "signals": ["EONET volcano", "aviation route", "ash advisory", "wind direction"], "decision": "Assess air mobility and visibility limits."},
+        {"name": "Infrastructure cascade", "risk": "HIGH", "signals": ["power outage reports", "telecom disruption", "hospital/port proximity", "cyber response overlap"], "decision": "Prioritize comms and power restoration dependencies."},
+    ],
+    "satellite_imagery": [
+        {"name": "Convoy / logistics pattern cue", "risk": "MEDIUM", "signals": ["road chokepoint", "conflict hotspot", "OpenSky/GDELT overlap", "before/after need"], "decision": "Task human imagery comparison; do not infer intent from one frame."},
+        {"name": "Burn-scar change detection", "risk": "HIGH", "signals": ["wildfire event", "thermal anomaly", "true-color contrast", "route proximity"], "decision": "Compare current imagery to previous scene and route map."},
+        {"name": "Flood extent cue", "risk": "HIGH", "signals": ["IMERG precipitation", "NOAA flood alert", "river/coastal proximity", "road/port overlap"], "decision": "Mark mobility degradation and alternate routes."},
+        {"name": "Shipyard / port change", "risk": "MEDIUM", "signals": ["strategic port", "AIS/port disruption", "GDELT article", "cloud-free imagery"], "decision": "Queue port-focused before/after review."},
+        {"name": "Construction / emplacement change", "risk": "MEDIUM", "signals": ["persistent hotspot", "new surface pattern", "road access", "conflict proximity"], "decision": "Require historical imagery and second-source confirmation."},
+        {"name": "Night-lights / power anomaly", "risk": "MEDIUM", "signals": ["disaster/conflict overlap", "urban area", "power-grid concern", "VIIRS night cue"], "decision": "Use as outage cue and corroborate with public utility/reporting."},
+    ],
+    "insider_ai": [
+        {"name": "Privilege misuse", "risk": "HIGH", "signals": ["admin action outlier", "new service account", "policy change", "sensitive repo access"], "decision": "Require peer review and revoke unnecessary privilege."},
+        {"name": "Impossible travel", "risk": "HIGH", "signals": ["geo velocity", "new ASN", "new device", "MFA prompt burst"], "decision": "Revoke sessions and force secure recovery."},
+        {"name": "Anomalous model artifact", "risk": "HIGH", "signals": ["hash drift", "unexpected pickle", "new dependency", "eval regression"], "decision": "Quarantine artifact and rebuild from trusted source."},
+        {"name": "Shadow AI connector", "risk": "MEDIUM", "signals": ["unapproved app", "sensitive scopes", "large prompt/context export", "unknown vendor"], "decision": "Remove connector and inspect data accessed."},
+        {"name": "Secret leakage", "risk": "HIGH", "signals": ["API key pattern", "public repo", "chat export", "CI log exposure"], "decision": "Revoke secret, rotate credentials, and scan dependent systems."},
+        {"name": "Malicious package/model supply chain", "risk": "HIGH", "signals": ["new package source", "obfuscated install", "model repo change", "unexpected network call"], "decision": "Block install, verify provenance, and isolate build runner."},
+    ],
+}
+
+
+def _deep_dive(module_id: str) -> dict[str, Any]:
+    base = DETAILED_MODULES.get(module_id, {})
+    if not base:
+        return {}
+    deep = {**base}
+    deep["typologies"] = [
+        *(base.get("typologies") or []),
+        *EXTRA_TYPOLOGIES.get(module_id, []),
+    ]
+    return deep
+
+
 def _source_details(names: list[str]) -> list[dict[str, str]]:
     wanted = set(names)
     return [s for s in TRUSTED_SOURCES if s["name"] in wanted]
@@ -489,7 +595,7 @@ def _module_payload(module: dict[str, Any], intel: Any, sanctions: Any, exposure
         "sources_detail": _source_details(module["sources"]),
         "hotspots": hotspots,
         "detail": detail,
-        "deep_dive": DETAILED_MODULES.get(module_id, {}),
+        "deep_dive": _deep_dive(module_id),
         "updated_at": datetime.utcnow().isoformat() + "Z",
     }
 
